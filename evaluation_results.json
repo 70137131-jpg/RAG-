@@ -1,0 +1,255 @@
+{
+  "metrics": {
+    "total_questions": 20,
+    "exact_match": 0.0,
+    "f1_score": 0.15244073297296595,
+    "contains_answer": 0.85
+  },
+  "results": [
+    {
+      "question": "In what country is Normandy located?",
+      "prediction": "Normandy is located in France. [Context 1] [Context 2]",
+      "ground_truths": [
+        "France",
+        "France",
+        "France",
+        "France"
+      ],
+      "exact_match": false,
+      "f1_score": 0.19999999999999998,
+      "contains_answer": true
+    },
+    {
+      "question": "When were the Normans in Normandy?",
+      "prediction": "The Normans were in Normandy during the 10th and 11th centuries, when they gave the region its name and developed a distinct cultural identity [Context 1].",
+      "ground_truths": [
+        "10th and 11th centuries",
+        "in the 10th and 11th centuries",
+        "10th and 11th centuries",
+        "10th and 11th centuries"
+      ],
+      "exact_match": false,
+      "f1_score": 0.37037037037037035,
+      "contains_answer": true
+    },
+    {
+      "question": "From which countries did the Norse originate?",
+      "prediction": "The Norse raiders and pirates came from Denmark, Iceland and Norway【Context 2】, and earlier Viking settlers also included Danes, Norwegians, Norse‑Gaels, Orkney Vikings, possibly Swedes, and Anglo‑Danes from the English Danelaw【Context 3】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "Denmark, Iceland and Norway",
+        "Denmark, Iceland and Norway",
+        "Denmark, Iceland and Norway",
+        "Denmark, Iceland and Norway"
+      ],
+      "exact_match": false,
+      "f1_score": 0.163265306122449,
+      "contains_answer": true
+    },
+    {
+      "question": "Who was the Norse leader?",
+      "prediction": "The Norse leader was Rollo. [Context 1] [Context 3]",
+      "ground_truths": [
+        "Rollo",
+        "Rollo",
+        "Rollo",
+        "Rollo"
+      ],
+      "exact_match": false,
+      "f1_score": 0.2222222222222222,
+      "contains_answer": true
+    },
+    {
+      "question": "What century did the Normans first gain their separate identity?",
+      "prediction": "The Normans first gained a distinct cultural and ethnic identity in the first half of the 10th century【Context 1】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "10th century",
+        "the first half of the 10th century",
+        "10th",
+        "10th"
+      ],
+      "exact_match": false,
+      "f1_score": 0.3125,
+      "contains_answer": true
+    },
+    {
+      "question": "Who was the duke in the battle of Hastings?",
+      "prediction": "The duke was William II of Normandy. [Context 1]",
+      "ground_truths": [
+        "William the Conqueror",
+        "William the Conqueror",
+        "William the Conqueror"
+      ],
+      "exact_match": false,
+      "f1_score": 0.2,
+      "contains_answer": false
+    },
+    {
+      "question": "Who ruled the duchy of Normandy",
+      "prediction": "The Duchy of Normandy was ruled by its founding Viking leader Rollo【Context 1】, later by Richard I of Normandy【\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "Richard I",
+        "Richard I",
+        "Richard I"
+      ],
+      "exact_match": false,
+      "f1_score": 0.125,
+      "contains_answer": true
+    },
+    {
+      "question": "What religion were the Normans",
+      "prediction": "The Normans were Christian, adopting Catholic orthodoxy as part of their religious identity. [Context 2]",
+      "ground_truths": [
+        "Catholic",
+        "Catholic orthodoxy",
+        "Catholic"
+      ],
+      "exact_match": false,
+      "f1_score": 0.25,
+      "contains_answer": true
+    },
+    {
+      "question": "What is the original meaning of the word Norman?",
+      "prediction": "The word *Norman* originally meant “Norseman” or “Northman” – a Viking from the north【Context 1】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "Viking",
+        "Norseman, Viking",
+        "Norseman, Viking"
+      ],
+      "exact_match": false,
+      "f1_score": 0.16,
+      "contains_answer": true
+    },
+    {
+      "question": "When was the Latin version of the word Norman first recorded?",
+      "prediction": "The Latinized forms of the word (e.g., Nortmannus, Normannus, Nordmannus) were first recorded in Medieval Latin in the 9th century【Context 1】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "9th century",
+        "9th century",
+        "9th century"
+      ],
+      "exact_match": false,
+      "f1_score": 0.12121212121212122,
+      "contains_answer": true
+    },
+    {
+      "question": "When was the Duchy of Normandy founded?",
+      "prediction": "The Duchy of Normandy was founded in **911** when the treaty of Saint‑Clair‑sur‑Epte established it as a fiefdom for Rollo and his men【Context 1】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "911",
+        "911",
+        "911"
+      ],
+      "exact_match": false,
+      "f1_score": 0.05405405405405406,
+      "contains_answer": true
+    },
+    {
+      "question": "Who did Rollo sign the treaty of Saint-Clair-sur-Epte with?",
+      "prediction": "Rollo signed the treaty of Saint‑Clair‑sur‑Epte with King Charles III of West Francia【Context 1】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "King Charles III",
+        "King Charles III",
+        "King Charles III"
+      ],
+      "exact_match": false,
+      "f1_score": 0.19354838709677416,
+      "contains_answer": true
+    },
+    {
+      "question": "What river originally bounded the Duchy",
+      "prediction": "The Duchy of Normandy was originally bounded by the **river Epte**【Context 1】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "Seine",
+        "Epte",
+        "Seine"
+      ],
+      "exact_match": false,
+      "f1_score": 0.08695652173913045,
+      "contains_answer": true
+    },
+    {
+      "question": "Who upon arriving gave the original viking settlers a common identity?",
+      "prediction": "The original Viking settlers were given a common identity by **Rollo** upon arriving, as they were led by him when they settled in Normandy and swore fealty to King Charles III of West Francia【Context 2】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "Rollo",
+        "Rollo",
+        "Rollo"
+      ],
+      "exact_match": false,
+      "f1_score": 0.04347826086956522,
+      "contains_answer": true
+    },
+    {
+      "question": "What was the Norman religion?",
+      "prediction": "I cannot answer this question based on the provided contexts.",
+      "ground_truths": [
+        "Catholicism",
+        "Catholicism",
+        "Catholicism"
+      ],
+      "exact_match": false,
+      "f1_score": 0.0,
+      "contains_answer": false
+    },
+    {
+      "question": "What part of France were the Normans located?",
+      "prediction": "The Normans were located in **Normandy, in northern France**—the area between the river Epte and the Atlantic coast, corresponding to the northern part of present‑day Upper Normandy down to the Seine【Context 3】【Context 1】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "north",
+        "the north",
+        "north"
+      ],
+      "exact_match": false,
+      "f1_score": 0.0,
+      "contains_answer": true
+    },
+    {
+      "question": "What was one of the Norman's major exports?",
+      "prediction": "One major export was **fighting horsemen**【Context 1】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "fighting horsemen",
+        "fighting horsemen",
+        "fighting horsemen"
+      ],
+      "exact_match": false,
+      "f1_score": 0.1904761904761905,
+      "contains_answer": true
+    },
+    {
+      "question": "Who was the Normans' main enemy in Italy, the Byzantine Empire and Armenia?",
+      "prediction": "\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "Seljuk Turks",
+        "the Pechenegs, the Bulgars, and especially the Seljuk Turks",
+        "the Seljuk Turks"
+      ],
+      "exact_match": false,
+      "f1_score": 0.0,
+      "contains_answer": false
+    },
+    {
+      "question": "When did Herve serve as a Byzantine general?",
+      "prediction": "Hervé served as a Byzantine general in the 1050s【Context 1】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "1050s",
+        "in the 1050s",
+        "in the 1050s"
+      ],
+      "exact_match": false,
+      "f1_score": 0.18181818181818182,
+      "contains_answer": true
+    },
+    {
+      "question": "When did Robert Crispin go up against the Turks?",
+      "prediction": "Robert Crispin went up against the Turks in the 1060s【Context 1】.\n\n[Note: This answer may not be fully grounded in the provided contexts]",
+      "ground_truths": [
+        "1060s",
+        "In the 1060s",
+        "In the 1060s"
+      ],
+      "exact_match": false,
+      "f1_score": 0.17391304347826084,
+      "contains_answer": true
+    }
+  ]
+}

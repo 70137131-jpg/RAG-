@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="RAG-powered chatbot with AI question answering">
+    <title>RAG Chatbot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+</head>
+
+<body>
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <button class="sidebar-btn" title="Menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+            </button>
+            <div class="sidebar-top">
+                <button class="sidebar-btn new-chat-btn" id="clearBtn" title="New Chat">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                    </svg>
+                </button>
+            </div>
+            <div class="sidebar-bottom">
+                <button class="sidebar-btn" id="statsBtn" title="Settings">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                    </svg>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="top-bar">
+                <div class="top-bar-left">
+                    <span class="brand-name">RAG Chatbot</span>
+                </div>
+                <div class="top-bar-right">
+                    <button id="dashboardBtn" class="dashboard-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7" rx="1" />
+                            <rect x="14" y="3" width="7" height="7" rx="1" />
+                            <rect x="3" y="14" width="7" height="7" rx="1" />
+                            <rect x="14" y="14" width="7" height="7" rx="1" />
+                        </svg>
+                        System Vitals
+                    </button>
+                    <div class="avatar-circle">A</div>
+                </div>
+            </header>
+
+            <!-- Welcome View (shown when no messages) -->
+            <div id="welcomeView" class="welcome-view">
+                <div class="welcome-content">
+                    <div class="greeting">
+                        <span class="sparkle-icon">✦</span>
+                        <span class="greeting-text">Hi there</span>
+                    </div>
+                    <h1 class="welcome-heading">Where should we start?</h1>
+                </div>
+            </div>
+
+            <!-- Chat View (shown when messages exist) -->
+            <div id="chatView" class="chat-view" style="display: none;">
+                <div id="chatMessages" class="chat-messages"></div>
+                <!-- Typing Indicator -->
+                <div id="typingIndicator" class="typing-indicator" style="display: none;">
+                    <div class="typing-avatar">
+                        <span class="sparkle-icon small">✦</span>
+                    </div>
+                    <div class="typing-dots">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area — always at bottom -->
+            <div class="input-area">
+                <form id="chatForm" class="input-form">
+                    <div class="input-box">
+                        <textarea id="questionInput" placeholder="Ask RAG Chatbot..." rows="1"
+                            autocomplete="off"></textarea>
+                        <div class="input-actions">
+                            <div class="input-actions-left">
+                                <div class="top-k-control">
+                                    <label for="topK">Sources:</label>
+                                    <select id="topK">
+                                        <option value="2">2</option>
+                                        <option value="3" selected>3</option>
+                                        <option value="5">5</option>
+                                        <option value="7">7</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="input-actions-right">
+                                <button type="submit" id="sendBtn" class="send-btn" disabled>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                        <path
+                                            d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.405Z" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+                <!-- Suggestion Chips -->
+                <div id="suggestionChips" class="suggestion-chips">
+                    <button class="chip" data-question="What is machine learning?">🤖 What is machine learning?</button>
+                    <button class="chip" data-question="Who was Nikola Tesla?">⚡ Who was Nikola Tesla?</button>
+                    <button class="chip" data-question="What causes earthquakes?">🌍 What causes earthquakes?</button>
+                    <button class="chip" data-question="Tell me about the solar system">🪐 Tell me about the solar
+                        system</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Dashboard Panel (slide-out) -->
+    <div id="dashboardPanel" class="dashboard-panel">
+        <div class="dashboard-inner">
+            <div class="dashboard-header">
+                <h2>System Vitals</h2>
+                <button id="dashboardClose" class="dashboard-close">&times;</button>
+            </div>
+            <div id="dashboardContent" class="dashboard-body">
+                <div class="loading">Loading vitals...</div>
+            </div>
+        </div>
+    </div>
+    <div id="dashboardOverlay" class="dashboard-overlay"></div>
+
+    <!-- Stats Modal (kept for sidebar gear) -->
+    <div id="statsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>System Statistics</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="statsContent">
+                    <div class="loading">Loading statistics...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <span id="charCount" style="display:none;">0</span>
+    <script src="{{ url_for('static', path='js/chat.js') }}"></script>
+</body>
+
+</html>
