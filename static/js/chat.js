@@ -209,7 +209,8 @@ class ChatBot {
             if (data.success) {
                 this.addMessage(data.answer, 'bot', data.sources);
             } else {
-                this.addMessage(`Sorry, I encountered an error: ${data.error || 'Unknown error'}`, 'bot');
+                const errMsg = data.error || data.detail || 'Unknown error';
+                this.addMessage(`Sorry, I encountered an error: ${errMsg}`, 'bot');
             }
         } catch (error) {
             this.hideTyping();

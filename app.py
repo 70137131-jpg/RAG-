@@ -108,7 +108,7 @@ async def query(req: QueryRequest, auth: None = Depends(verify_token)):
         return response
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={'success': False, 'error': str(e)})
 
 @app.get("/api/history")
 async def get_history(session_id: str = "default", auth: None = Depends(verify_token)):
