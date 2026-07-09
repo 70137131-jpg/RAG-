@@ -195,6 +195,12 @@ a {
     flex-direction: column;
 }
 
+#sessionHistoryList {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
 .group-title {
     color: var(--text-muted);
     font-size: 12px;
@@ -203,6 +209,7 @@ a {
 }
 
 .history-item {
+    display: block;
     padding: 6px 12px;
     border-radius: var(--radius-md);
     color: var(--text-muted);
