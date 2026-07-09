@@ -373,6 +373,68 @@ a {
     background: var(--bg-hover);
 }
 
+.share-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.share-btn:disabled:hover {
+    background: transparent;
+}
+
+.admin-token-label {
+    width: 100%;
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.admin-token-row {
+    width: 100%;
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.admin-token-input {
+    min-width: 0;
+    flex: 1;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: var(--radius-md);
+    padding: 7px 8px;
+    font-size: 12px;
+    outline: none;
+}
+
+.admin-token-input:focus {
+    border-color: var(--accent);
+}
+
+.token-save-btn {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    border-radius: var(--radius-md);
+    padding: 0 10px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.token-save-btn:hover {
+    background: var(--accent-hover);
+}
+
+.admin-token-hint {
+    width: 100%;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.4;
+    margin-bottom: 10px;
+}
+
 .chat-area {
     flex-grow: 1;
     display: flex;

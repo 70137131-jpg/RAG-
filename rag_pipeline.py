@@ -197,10 +197,14 @@ class RAGPipeline:
                 contents=full_prompt,
                 config=generation_config,
             )
-            answer = response.text.strip()
+            # response.text is None when generation is blocked or returns no candidates
+            answer = (response.text or "").strip()
         else:
             answer = await asyncio.to_thread(self._generate_openrouter, full_prompt)
-        
+
+        if not answer:
+            return "I couldn't generate an answer for this question. Please try rephrasing it."
+
         if (
             self.require_citations
             and "[Context" not in answer
