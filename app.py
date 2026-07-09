@@ -4,13 +4,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 import time
 import os
+import re
 import uuid
 import json
 import hmac
-from datetime import datetime
+import copy
+from datetime import datetime, timezone
 from typing import Optional
 from dotenv import load_dotenv
 
@@ -22,6 +24,14 @@ from vector_store import VectorStore
 from rag_pipeline import RAGPipeline
 from postgres_chat_log import PostgresChatLogStore
 from upstash_redis.asyncio import Redis
+import asyncio
+import logging
+
+logger = logging.getLogger("rag_app")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 SESSION_COOKIE = "rag_session_id"
 admin_auth_scheme = HTTPBearer(auto_error=False)
@@ -103,6 +113,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="RAG Pipeline Serverless", lifespan=lifespan)
 
+# CORS: the UI is served same-origin, so cross-origin access is opt-in only.
+# Wildcard origins must never be combined with credentials (cookie theft risk).
+from fastapi.middleware.cors import CORSMiddleware
+_cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials="*" not in _cors_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 if os.path.exists(os.path.join(BASE_DIR, 'static')):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -127,18 +150,29 @@ def get_chat_log_store(request: Request) -> PostgresChatLogStore:
     return request.app.state.chat_log_store
 
 
+SESSION_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+
+
+def is_valid_session_id(session_id: str) -> bool:
+    return bool(SESSION_ID_PATTERN.fullmatch(session_id))
+
+
+def set_session_cookie(response: Response, session_id: str) -> None:
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_id,
+        httponly=True,
+        samesite="lax",
+        secure=os.getenv("COOKIE_SECURE", "").lower() == "true",
+        max_age=60 * 60 * 24 * 30,
+    )
+
+
 def get_session_id(request: Request, response: Response) -> str:
     session_id = request.cookies.get(SESSION_COOKIE)
-    if not session_id:
+    if not session_id or not is_valid_session_id(session_id):
         session_id = uuid.uuid4().hex
-        response.set_cookie(
-            SESSION_COOKIE,
-            session_id,
-            httponly=True,
-            samesite="lax",
-            secure=os.getenv("COOKIE_SECURE", "").lower() == "true",
-            max_age=60 * 60 * 24 * 30,
-        )
+        set_session_cookie(response, session_id)
     return session_id
 
 
@@ -166,22 +200,51 @@ def require_admin_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
 class QueryRequest(BaseModel):
     question: str
     top_k: int = 3
+
+    @field_validator('question')
+    @classmethod
+    def question_not_too_long(cls, v):
+        if len(v) > 5000:
+            raise ValueError('Question must be 5000 characters or fewer')
+        if not v.strip():
+            raise ValueError('Question cannot be empty')
+        return v.strip()
+
+    @field_validator('top_k')
+    @classmethod
+    def top_k_bounded(cls, v):
+        if v < 1 or v > 20:
+            raise ValueError('top_k must be between 1 and 20')
+        return v
 
 
 class SwitchChatRequest(BaseModel):
     session_id: str
 
+REDIS_HISTORY_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 days
+REDIS_MAX_HISTORY_ENTRIES = 200  # Cap conversation length
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, response: Response):
     """Render the chat interface"""
-    get_session_id(request, response)
+    session_id = get_session_id(request, response)
     if templates:
         template_response = templates.TemplateResponse(request=request, name="index.html", context={"request": request})
-        for header in response.raw_headers:
-            template_response.raw_headers.append(header)
+        # Forward Set-Cookie header properly instead of raw_headers hack
+        cookie_value = request.cookies.get(SESSION_COOKIE)
+        if not cookie_value:
+            template_response.set_cookie(
+                SESSION_COOKIE,
+                session_id,
+                httponly=True,
+                samesite="lax",
+                secure=os.getenv("COOKIE_SECURE", "").lower() == "true",
+                max_age=60 * 60 * 24 * 30,
+            )
         return template_response
     return HTMLResponse("<h1>RAG Backend Running</h1><p>Static files missing, but API is up.</p>")
 
@@ -226,11 +289,14 @@ async def query(
             "response_time_ms": response_time_ms
         }
         
-        # Retrieve existing history, append, and save
+        # Retrieve existing history, append, and save with TTL + size cap
         existing_history = await redis_client.get(history_key)
         history = json.loads(existing_history) if existing_history else []
         history.append(message_entry)
-        await redis_client.set(history_key, json.dumps(history))
+        # Cap history size to prevent unbounded growth
+        if len(history) > REDIS_MAX_HISTORY_ENTRIES:
+            history = history[-REDIS_MAX_HISTORY_ENTRIES:]
+        await redis_client.set(history_key, json.dumps(history), ex=REDIS_HISTORY_TTL_SECONDS)
         
         # Increment total metrics
         await redis_client.incr("metrics:total_queries")
@@ -246,7 +312,6 @@ async def query(
             sources=sources,
             response_time_ms=response_time_ms,
         )
-        await chat_log_store.purge_old_logs()
         
         response = {
             'success': True,
@@ -260,26 +325,33 @@ async def query(
         return response
 
     except Exception as e:
+        logger.exception("Error processing query")
         return JSONResponse(status_code=500, content={'success': False, 'error': str(e)})
 
 @app.post("/api/index-data")
 async def index_data(
+    _: None = Depends(require_admin_token),
     config: RAGConfig = Depends(get_config),
     vector_store: VectorStore = Depends(get_vector_store)
 ):
-    """Trigger data ingestion from the frontend."""
+    """Trigger data ingestion from the frontend. Requires admin auth."""
     try:
-        # Override to ensure it doesn't take too long in demo
-        config.data.max_samples = 100
+        # Copy config to avoid mutating the shared singleton
+        local_data_config = copy.deepcopy(config.data)
+        local_data_config.max_samples = 100
         
-        loader = create_data_loader_from_config(config)
-        loader.load(max_samples=config.data.max_samples)
+        local_config = copy.deepcopy(config)
+        local_config.data = local_data_config
+        
+        loader = create_data_loader_from_config(local_config)
         contexts = loader.get_contexts()
         
-        vector_store.add_documents(contexts, chunk_documents=True)
+        # Run blocking Pinecone upsert off the event loop
+        await asyncio.to_thread(vector_store.add_documents, contexts, True)
         
         return {"success": True, "indexed_count": len(contexts)}
     except Exception as e:
+        logger.exception("Error indexing data")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/history")
@@ -427,15 +499,33 @@ async def get_stats(
 
 @app.get("/health")
 async def health():
-    """Health check endpoint"""
+    """Health check endpoint — verifies Pinecone, Redis, and PostgreSQL connectivity."""
+    health_status = {'status': 'healthy', 'services': {}}
     try:
         stats = app.state.vector_store.get_stats()
-        return {
-            'status': 'healthy',
-            'documents_indexed': stats['total_documents']
-        }
+        health_status['documents_indexed'] = stats['total_documents']
+        health_status['services']['pinecone'] = 'ok'
     except Exception as e:
-        return JSONResponse(status_code=500, content={'status': 'unhealthy', 'error': str(e)})
+        health_status['services']['pinecone'] = f'error: {e}'
+        health_status['status'] = 'degraded'
+
+    try:
+        await app.state.redis_client.ping()
+        health_status['services']['redis'] = 'ok'
+    except Exception as e:
+        health_status['services']['redis'] = f'error: {e}'
+        health_status['status'] = 'degraded'
+
+    try:
+        async with app.state.chat_log_store.pool.acquire() as conn:
+            await conn.execute('SELECT 1')
+        health_status['services']['postgres'] = 'ok'
+    except Exception as e:
+        health_status['services']['postgres'] = f'error: {e}'
+        health_status['status'] = 'degraded'
+
+    status_code = 200 if health_status['status'] == 'healthy' else 503
+    return JSONResponse(status_code=status_code, content=health_status)
 
 if __name__ == '__main__':
     import uvicorn

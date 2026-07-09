@@ -4,11 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title> RAG</title>
+    <title>Atlas RAG — Research Assistant</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -151,7 +152,8 @@
                 <div class="section-title">Status</div>
                 <div class="nav-item" style="cursor:default;">
                     <div class="status-indicator" id="statusIndicator">
-                        <span class="status-dot green"></span> Ready
+                        <span class="status-dot yellow"></span>
+                        <span id="statusText">Checking...</span>
                     </div>
                 </div>
             </div>
@@ -170,6 +172,15 @@
             <div class="sidebar-section">
                 <div class="section-title">Data Management</div>
                 <div class="nav-item" style="display: flex; flex-direction: column;">
+                    <label class="admin-token-label" for="adminTokenInput">Admin token</label>
+                    <div class="admin-token-row">
+                        <input id="adminTokenInput" class="admin-token-input" type="password"
+                            placeholder="Required for stats and indexing" autocomplete="off">
+                        <button id="saveAdminTokenBtn" class="token-save-btn" type="button">Save</button>
+                    </div>
+                    <div id="adminTokenHint" class="admin-token-hint">
+                        Public chat works without a token. Admin actions stay locked until a valid token is saved.
+                    </div>
                     <button id="indexDataBtn" class="share-btn"
                         style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; padding: 6px 10px;">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2"

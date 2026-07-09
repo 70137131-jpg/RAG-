@@ -10,11 +10,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _env(name: str, default: str = "") -> str:
+    """Read an environment variable while treating empty strings as unset."""
+    return os.getenv(name) or default
+
+
 @dataclass
 class VectorStoreConfig:
     """Configuration for vector store (Pinecone)"""
-    api_key: str = os.getenv("PINECONE_API_KEY", "")
-    index_name: str = os.getenv("PINECONE_INDEX_NAME", "squad-rag-integrated")
+    api_key: str = ""
+    index_name: str = "squad-rag-integrated"
     embedding_model: str = "multilingual-e5-large"
     chunk_size: int = 500
     chunk_overlap: int = 50
@@ -22,30 +28,27 @@ class VectorStoreConfig:
 @dataclass
 class LLMConfig:
     """Configuration for LLM (Generation)"""
-    model: str = os.getenv("LLM_MODEL", "gemini-1.5-flash")
-    provider: str = os.getenv("LLM_PROVIDER", "").lower()
+    model: str = "gemini-1.5-flash"
+    provider: str = ""
     temperature: float = 0.1
     max_tokens: int = 300
-    api_key: str = os.getenv("GOOGLE_API_KEY", "")
-    openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
-    openrouter_base_url: str = os.getenv(
-        "OPENROUTER_BASE_URL",
-        "https://openrouter.ai/api/v1/chat/completions",
-    )
-    openrouter_site_url: str = os.getenv("OPENROUTER_SITE_URL", "")
-    openrouter_app_name: str = os.getenv("OPENROUTER_APP_NAME", "RAG Pipeline")
+    api_key: str = ""
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1/chat/completions"
+    openrouter_site_url: str = ""
+    openrouter_app_name: str = "RAG Pipeline"
 
 @dataclass
 class RedisConfig:
     """Configuration for Upstash Redis"""
-    url: str = os.getenv("UPSTASH_REDIS_REST_URL", "")
-    token: str = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
+    url: str = ""
+    token: str = ""
 
 @dataclass
 class PostgresConfig:
     """Configuration for PostgreSQL chat logs"""
-    dsn: str = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_DSN", "")
-    retention_days: int = int(os.getenv("CHAT_LOG_RETENTION_DAYS", "7"))
+    dsn: str = ""
+    retention_days: int = 7
 
 @dataclass
 class DataConfig:
@@ -67,4 +70,29 @@ class RAGConfig:
     @classmethod
     def from_env(cls) -> "RAGConfig":
         """Create configuration from environment variables"""
-        return cls()
+        return cls(
+            vector_store=VectorStoreConfig(
+                api_key=_env("PINECONE_API_KEY"),
+                index_name=_env("PINECONE_INDEX_NAME", "squad-rag-integrated"),
+            ),
+            llm=LLMConfig(
+                model=_env("LLM_MODEL", "gemini-1.5-flash"),
+                provider=_env("LLM_PROVIDER").lower(),
+                api_key=_env("GOOGLE_API_KEY"),
+                openrouter_api_key=_env("OPENROUTER_API_KEY"),
+                openrouter_base_url=_env(
+                    "OPENROUTER_BASE_URL",
+                    "https://openrouter.ai/api/v1/chat/completions",
+                ),
+                openrouter_site_url=_env("OPENROUTER_SITE_URL"),
+                openrouter_app_name=_env("OPENROUTER_APP_NAME", "RAG Pipeline"),
+            ),
+            redis=RedisConfig(
+                url=_env("UPSTASH_REDIS_REST_URL"),
+                token=_env("UPSTASH_REDIS_REST_TOKEN"),
+            ),
+            postgres=PostgresConfig(
+                dsn=_env("DATABASE_URL") or _env("POSTGRES_DSN"),
+                retention_days=int(_env("CHAT_LOG_RETENTION_DAYS", "7")),
+            ),
+        )

@@ -36,6 +36,7 @@ def build_pipeline(monkeypatch, response_text="Mocked answer [Context 1]"):
     pipeline = RAGPipeline(
         vector_store=mock_vs,
         llm_model="gemini-1.5-flash",
+        llm_provider="gemini",
         temperature=0.2,
         max_tokens=123,
     )

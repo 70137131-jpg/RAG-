@@ -11,8 +11,11 @@ class FakeRedis:
     async def get(self, key):
         return self.values.get(key)
 
-    async def set(self, key, value):
+    async def set(self, key, value, ex=None):
         self.values[key] = value
+
+    async def ping(self):
+        return True
 
     async def delete(self, key):
         self.values.pop(key, None)
@@ -39,6 +42,7 @@ class FakeChatLogStore:
         self.initialized = False
         self.closed = False
         self.purge_count = 0
+        self.pool = FakePool()
 
     async def connect(self):
         self.connected = True
@@ -61,6 +65,24 @@ class FakeChatLogStore:
         if session_id is not None:
             logs = [log for log in logs if log["session_id"] == session_id]
         return logs[:limit]
+
+
+class FakeConnection:
+    async def execute(self, query):
+        return "SELECT 1"
+
+
+class FakePoolAcquire:
+    async def __aenter__(self):
+        return FakeConnection()
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+
+class FakePool:
+    def acquire(self):
+        return FakePoolAcquire()
 
 
 def make_client(monkeypatch):
@@ -127,8 +149,7 @@ def test_query_empty_question(monkeypatch):
     with make_client(monkeypatch)[0] as client:
         response = client.post("/api/query", json={"question": ""})
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Question cannot be empty"
+    assert response.status_code == 422
 
 
 def test_history_and_clear_are_session_scoped(monkeypatch):
@@ -260,7 +281,15 @@ def test_health_endpoint(monkeypatch):
         response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "healthy", "documents_indexed": 10}
+    assert response.json() == {
+        "status": "healthy",
+        "services": {
+            "pinecone": "ok",
+            "redis": "ok",
+            "postgres": "ok",
+        },
+        "documents_indexed": 10,
+    }
 
 
 def test_startup_validation_reports_missing_services():
@@ -269,7 +298,12 @@ def test_startup_validation_reports_missing_services():
 
     config = RAGConfig.from_env()
     config.vector_store.api_key = ""
+    config.vector_store.index_name = "test-index"
+    config.llm.provider = "gemini"
+    config.llm.model = "gemini-1.5-flash"
     config.llm.api_key = ""
+    config.redis.url = "https://redis.example"
+    config.redis.token = "redis-token"
     config.postgres.dsn = ""
 
     try:

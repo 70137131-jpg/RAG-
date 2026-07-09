@@ -19,6 +19,11 @@ class ChatBot {
         this.docCount = document.getElementById('docCount');
         this.sessionHistoryList = document.getElementById('sessionHistoryList');
         this.chatLogList = document.getElementById('chatLogList');
+        this.statusIndicator = document.getElementById('statusIndicator');
+        this.statusText = document.getElementById('statusText');
+        this.adminTokenInput = document.getElementById('adminTokenInput');
+        this.saveAdminTokenBtn = document.getElementById('saveAdminTokenBtn');
+        this.adminTokenHint = document.getElementById('adminTokenHint');
         
         // UI Buttons
         this.shareBtn = document.getElementById('shareBtn');
@@ -28,10 +33,12 @@ class ChatBot {
         
         this.isLoading = false;
         this.hasMessages = false;
+        this.MAX_QUESTION_LENGTH = 2000;
         this.currentSessionId = null;
         this.currentConversation = [];
         this.sessionStorageKey = 'rag_chat_sessions';
         this.sessions = this.readStoredSessions();
+        this.adminToken = '';
 
         // Configure marked.js for markdown parsing
         if (typeof marked !== 'undefined') {
@@ -51,8 +58,53 @@ class ChatBot {
         this.initEventListeners();
         this.initResizers();
         this.autoResizeTextarea();
+        this.updateAdminControls();
         this.loadSystemStats();
         this.loadChatHistory();
+    }
+
+    getAdminHeaders() {
+        const headers = { 'Content-Type': 'application/json' };
+        if (this.adminToken) {
+            headers.Authorization = `Bearer ${this.adminToken}`;
+        }
+        return headers;
+    }
+
+    async parseJsonResponse(response) {
+        const text = await response.text();
+        if (!text) return {};
+        try {
+            return JSON.parse(text);
+        } catch (error) {
+            return { error: text };
+        }
+    }
+
+    setSystemStatus(state, text) {
+        if (!this.statusIndicator) return;
+        const dot = this.statusIndicator.querySelector('.status-dot');
+        if (dot) {
+            dot.className = `status-dot ${state}`;
+        }
+        if (this.statusText) {
+            this.statusText.textContent = text;
+        }
+    }
+
+    updateAdminControls() {
+        const hasToken = Boolean(this.adminToken);
+        if (this.indexDataBtn) {
+            this.indexDataBtn.disabled = !hasToken || this.isLoading;
+            this.indexDataBtn.title = hasToken
+                ? 'Index the configured dataset'
+                : 'Save an admin token to enable indexing';
+        }
+        if (this.adminTokenHint) {
+            this.adminTokenHint.textContent = hasToken
+                ? 'Admin token saved locally in this browser.'
+                : 'Public chat works without a token. Admin actions stay locked until a valid token is saved.';
+        }
     }
 
     initResizers() {
@@ -187,23 +239,37 @@ class ChatBot {
             });
         }
 
+        if (this.saveAdminTokenBtn && this.adminTokenInput) {
+            this.saveAdminTokenBtn.addEventListener('click', () => {
+                this.adminToken = this.adminTokenInput.value.trim();
+                this.updateAdminControls();
+                this.loadSystemStats();
+            });
+        }
+
         this.indexDataBtn = document.getElementById('indexDataBtn');
         this.indexLoader = document.getElementById('indexLoader');
 
         if (this.indexDataBtn) {
             this.indexDataBtn.addEventListener('click', async () => {
+                if (!this.adminToken) {
+                    alert('Enter the admin token before indexing data.');
+                    return;
+                }
                 this.indexDataBtn.style.display = 'none';
                 if (this.indexLoader) this.indexLoader.style.display = 'flex';
                 
                 try {
                     const response = await fetch('/api/index-data', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
+                        headers: this.getAdminHeaders()
                     });
-                    const data = await response.json();
+                    const data = await this.parseJsonResponse(response);
                     if (response.ok && data.success) {
                         alert(`Successfully indexed ${data.indexed_count} documents!`);
                         this.loadSystemStats();
+                    } else if (response.status === 401 || response.status === 403) {
+                        alert('Indexing failed: the admin token was rejected.');
                     } else {
                         alert(`Failed to index data: ${data.detail || data.error}`);
                     }
@@ -212,6 +278,7 @@ class ChatBot {
                 } finally {
                     this.indexDataBtn.style.display = 'flex';
                     if (this.indexLoader) this.indexLoader.style.display = 'none';
+                    this.updateAdminControls();
                 }
             });
         }
@@ -483,9 +550,30 @@ class ChatBot {
         this.upsertSession(this.currentSessionId, title);
     }
 
+    escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    sanitizeHtml(html) {
+        if (typeof DOMPurify !== 'undefined') {
+            return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+        }
+        // Fallback: strip all HTML tags if DOMPurify is not loaded
+        const div = document.createElement('div');
+        div.textContent = html.replace(/<[^>]*>/g, '');
+        return div.innerHTML;
+    }
+
     async sendMessage() {
         const question = this.questionInput.value.trim();
         if (!question || this.isLoading) return;
+
+        if (question.length > this.MAX_QUESTION_LENGTH) {
+            alert(`Question is too long. Maximum ${this.MAX_QUESTION_LENGTH} characters allowed.`);
+            return;
+        }
 
         const topK = this.topKSelect ? parseInt(this.topKSelect.value, 10) : 3;
         
@@ -550,7 +638,8 @@ class ChatBot {
         contentDiv.className = 'message-content';
 
         if (type === 'bot') {
-            contentDiv.innerHTML = typeof marked !== 'undefined' ? marked.parse(text) : `<p>${text}</p>`;
+            const rawHtml = typeof marked !== 'undefined' ? marked.parse(text) : `<p>${this.escapeHtml(text)}</p>`;
+            contentDiv.innerHTML = this.sanitizeHtml(rawHtml);
             
             if (sources && sources.length > 0) {
                 contentDiv.appendChild(this.createSourcesDrawer(sources));
@@ -587,10 +676,12 @@ class ChatBot {
             const item = document.createElement('div');
             item.className = 'source-item';
             
-            const similarityScore = source.similarity ? ` · ${source.similarity}% match` : '';
+            const similarityScore = source.similarity ? ` · ${this.escapeHtml(String(source.similarity))}% match` : '';
+            const safeId = this.escapeHtml(source.id || `Source ${idx + 1}`);
+            const safeText = this.escapeHtml(source.text || '');
             item.innerHTML = `
-                <h4>${source.id || `Source ${idx + 1}`}${similarityScore}</h4>
-                <p>${source.text}</p>
+                <h4>${safeId}${similarityScore}</h4>
+                <p>${safeText}</p>
             `;
             content.appendChild(item);
         });
