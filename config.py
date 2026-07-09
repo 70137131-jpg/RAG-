@@ -23,9 +23,17 @@ class VectorStoreConfig:
 class LLMConfig:
     """Configuration for LLM (Generation)"""
     model: str = os.getenv("LLM_MODEL", "gemini-1.5-flash")
+    provider: str = os.getenv("LLM_PROVIDER", "").lower()
     temperature: float = 0.1
     max_tokens: int = 300
     api_key: str = os.getenv("GOOGLE_API_KEY", "")
+    openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
+    openrouter_base_url: str = os.getenv(
+        "OPENROUTER_BASE_URL",
+        "https://openrouter.ai/api/v1/chat/completions",
+    )
+    openrouter_site_url: str = os.getenv("OPENROUTER_SITE_URL", "")
+    openrouter_app_name: str = os.getenv("OPENROUTER_APP_NAME", "RAG Pipeline")
 
 @dataclass
 class RedisConfig:
@@ -34,16 +42,17 @@ class RedisConfig:
     token: str = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
 
 @dataclass
+class PostgresConfig:
+    """Configuration for PostgreSQL chat logs"""
+    dsn: str = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_DSN", "")
+    retention_days: int = int(os.getenv("CHAT_LOG_RETENTION_DAYS", "7"))
+
+@dataclass
 class DataConfig:
     """Configuration for data loading"""
     dataset_name: str = "squad_v2"
     split: str = "validation"
-    max_samples: int = 100
-
-@dataclass
-class AppConfig:
-    """Configuration for FastAPI app"""
-    auth_token: str = os.getenv("API_AUTH_TOKEN", "super-secret-student-key")
+    max_samples: Optional[int] = None
 
 @dataclass
 class RAGConfig:
@@ -51,8 +60,8 @@ class RAGConfig:
     vector_store: VectorStoreConfig = field(default_factory=VectorStoreConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     redis: RedisConfig = field(default_factory=RedisConfig)
+    postgres: PostgresConfig = field(default_factory=PostgresConfig)
     data: DataConfig = field(default_factory=DataConfig)
-    app: AppConfig = field(default_factory=AppConfig)
     top_k: int = 3
 
     @classmethod
