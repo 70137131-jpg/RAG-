@@ -278,6 +278,7 @@ async def query(
         message_entry = {
             "question": question,
             "answer": result["answer"],
+            "sources": sources,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "response_time_ms": response_time_ms
         }

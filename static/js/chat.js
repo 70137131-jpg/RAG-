@@ -925,16 +925,16 @@ class ChatBot {
 
     createSourcesDrawer(sources) {
         const panel = document.createElement('div');
-        // Collapsed by default; long transcripts stay scannable
-        panel.className = 'sources-panel';
+        // Expanded by default: retrieved contexts are the point of a RAG answer
+        panel.className = 'sources-panel expanded';
 
         const toggle = document.createElement('button');
         toggle.type = 'button';
         toggle.className = 'sources-toggle';
-        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-expanded', 'true');
         toggle.innerHTML = `
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            Sources (${sources.length})
+            Retrieved contexts (${sources.length})
         `;
 
         const content = document.createElement('div');
@@ -944,11 +944,13 @@ class ChatBot {
             const item = document.createElement('div');
             item.className = 'source-item';
 
+            // Numbering matches the [Context N] citations in the answer:
+            // sources arrive in the same order the contexts were sent to the LLM
             const similarityScore = source.similarity ? ` · ${this.escapeHtml(String(source.similarity))}% match` : '';
-            const safeId = this.escapeHtml(source.id || `Source ${idx + 1}`);
+            const safeId = this.escapeHtml(source.id || 'unknown');
             const safeText = this.escapeHtml(source.text || '');
             item.innerHTML = `
-                <h4>${safeId}${similarityScore}</h4>
+                <h4><span class="context-badge">Context ${idx + 1}</span> ${safeId}${similarityScore}</h4>
                 <p>${safeText}</p>
             `;
             content.appendChild(item);

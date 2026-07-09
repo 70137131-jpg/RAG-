@@ -160,7 +160,11 @@ def test_history_and_clear_are_session_scoped(monkeypatch):
         empty_history_response = client.get("/api/history")
 
     assert history_response.status_code == 200
-    assert len(history_response.json()["history"]) == 1
+    history = history_response.json()["history"]
+    assert len(history) == 1
+    # Restored conversations must keep their retrieved contexts (RAG sources)
+    assert history[0]["sources"][0]["id"] == "doc1"
+    assert history[0]["sources"][0]["similarity"] == 90.0
     assert clear_response.json()["success"] is True
     assert empty_history_response.json()["history"] == []
 
