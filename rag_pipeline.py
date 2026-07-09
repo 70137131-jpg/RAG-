@@ -9,10 +9,12 @@ from vector_store import VectorStore
 import os
 import re
 import asyncio
+import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
@@ -28,7 +30,12 @@ class RAGPipeline:
         max_tokens: int = 1024,
         max_context_length: int = 4000,
         enable_compression: bool = True,
-        require_citations: bool = True
+        require_citations: bool = True,
+        llm_provider: Optional[str] = None,
+        openrouter_api_key: Optional[str] = None,
+        openrouter_base_url: str = "https://openrouter.ai/api/v1/chat/completions",
+        openrouter_site_url: str = "",
+        openrouter_app_name: str = "RAG Pipeline",
     ):
         self.vector_store = vector_store
         self.llm_model = llm_model
@@ -37,24 +44,35 @@ class RAGPipeline:
         self.max_context_length = max_context_length
         self.enable_compression = enable_compression
         self.require_citations = require_citations
+        self.openrouter_api_key = openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
+        self.openrouter_base_url = openrouter_base_url
+        self.openrouter_site_url = openrouter_site_url
+        self.openrouter_app_name = openrouter_app_name
 
         # Auto-upgrade deprecated models if necessary
         if self.llm_model == "gemini-1.5-flash-latest":
             self.llm_model = "gemini-1.5-flash"
 
-        self.use_gemini = "gemini" in self.llm_model.lower()
+        provider = (llm_provider or os.getenv("LLM_PROVIDER", "")).lower().strip()
+        if not provider:
+            provider = "gemini" if "gemini" in self.llm_model.lower() else "openrouter"
+
+        self.use_gemini = provider == "gemini"
+        self.use_openrouter = provider == "openrouter"
         
         if self.use_gemini:
             if not GEMINI_AVAILABLE:
-                raise ImportError("google-generativeai is required for Gemini.")
+                raise ImportError("google-genai is required for Gemini.")
             google_api_key = os.getenv("GOOGLE_API_KEY")
             if not google_api_key:
                 raise ValueError("GOOGLE_API_KEY not found.")
-            
-            genai.configure(api_key=google_api_key)
-            self.gemini_model = genai.GenerativeModel(self.llm_model)
+
+            self.gemini_client = genai.Client(api_key=google_api_key)
+        elif self.use_openrouter:
+            if not self.openrouter_api_key:
+                raise ValueError("OPENROUTER_API_KEY not found.")
         else:
-            raise NotImplementedError("Currently only Gemini is configured for the async pipeline.")
+            raise NotImplementedError(f"Unsupported LLM provider: {provider}")
 
     async def retrieve_async(self, query: str, top_k: int = 3) -> List[Dict]:
         """Async wrapper for Pinecone search"""
@@ -86,6 +104,48 @@ class RAGPipeline:
             else:
                 break
         return truncated if truncated else [contexts[0][:self.max_context_length]]
+
+    def _is_document_gap_answer(self, answer: str) -> bool:
+        normalized = re.sub(r"\s+", " ", answer.lower()).strip()
+        gap_phrases = (
+            "cannot answer",
+            "can't answer",
+            "do not contain",
+            "don't contain",
+            "does not contain",
+            "doesn't contain",
+            "not enough information",
+            "insufficient information",
+            "not provided in the",
+            "not mentioned in the",
+            "not covered in the",
+        )
+        return any(phrase in normalized for phrase in gap_phrases)
+
+    def _generate_openrouter(self, prompt: str) -> str:
+        headers = {
+            "Authorization": f"Bearer {self.openrouter_api_key}",
+            "Content-Type": "application/json",
+        }
+        if self.openrouter_site_url:
+            headers["HTTP-Referer"] = self.openrouter_site_url
+        if self.openrouter_app_name:
+            headers["X-OpenRouter-Title"] = self.openrouter_app_name
+
+        response = requests.post(
+            self.openrouter_base_url,
+            headers=headers,
+            json={
+                "model": self.llm_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"].strip()
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def generate_async(
@@ -126,20 +186,26 @@ class RAGPipeline:
         
         full_prompt = f"{system_prompt}\n\n===== RETRIEVED CONTEXTS =====\n{combined_context}\n\n===== USER QUESTION =====\n{query}"
 
-        generation_config = {
-            "temperature": self.temperature,
-            "max_output_tokens": self.max_tokens,
-        }
+        if self.use_gemini:
+            generation_config = types.GenerateContentConfig(
+                temperature=self.temperature,
+                max_output_tokens=self.max_tokens,
+            )
+
+            response = await self.gemini_client.aio.models.generate_content(
+                model=self.llm_model,
+                contents=full_prompt,
+                config=generation_config,
+            )
+            answer = response.text.strip()
+        else:
+            answer = await asyncio.to_thread(self._generate_openrouter, full_prompt)
         
-        # Call Gemini Async
-        response = await self.gemini_model.generate_content_async(
-            full_prompt,
-            generation_config=generation_config
-        )
-        
-        answer = response.text.strip()
-        
-        if self.require_citations and "[Context" not in answer and "cannot answer" not in answer.lower():
+        if (
+            self.require_citations
+            and "[Context" not in answer
+            and not self._is_document_gap_answer(answer)
+        ):
             answer = f"{answer}\n\n[Note: This answer may not be fully grounded in the provided contexts]"
             
         return answer

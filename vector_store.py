@@ -55,7 +55,7 @@ class VectorStore:
 
         return chunks
 
-    def add_documents(self, documents: List[Dict[str, str]], chunk_documents: bool = False, batch_size: int = 100):
+    def add_documents(self, documents: List[Dict[str, str]], chunk_documents: bool = False, batch_size: int = 90):
         """
         Add documents to the vector store using Pinecone Inference API
         """
@@ -85,13 +85,26 @@ class VectorStore:
             batch_ids = all_ids[i:i + batch_size]
             batch_metadatas = all_metadatas[i:i + batch_size]
 
-            # Generate embeddings via Pinecone Inference API
+            # Generate embeddings via Pinecone Inference API with retry logic
             print(f"Embedding batch {i//batch_size + 1}...")
-            embeddings_response = self.pc.inference.embed(
-                model=self.embedding_model,
-                inputs=batch_texts,
-                parameters={"input_type": "passage", "truncate": "END"}
-            )
+            
+            # Simple retry loop for 429 Too Many Requests
+            max_retries = 5
+            for attempt in range(max_retries):
+                try:
+                    embeddings_response = self.pc.inference.embed(
+                        model=self.embedding_model,
+                        inputs=batch_texts,
+                        parameters={"input_type": "passage", "truncate": "END"}
+                    )
+                    break # Success
+                except Exception as e:
+                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                        wait_time = 15 * (attempt + 1)
+                        print(f"Rate limited (429). Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
+                        time.sleep(wait_time)
+                    else:
+                        raise e
             
             # Extract actual float arrays
             vectors = [record["values"] for record in embeddings_response]
@@ -100,7 +113,7 @@ class VectorStore:
             upsert_data = zip(batch_ids, vectors, batch_metadatas)
             
             self.index.upsert(vectors=list(upsert_data))
-            time.sleep(0.5) # simple rate limit pause
+            time.sleep(1.0) # slightly longer simple rate limit pause
 
         print("Successfully added documents to Pinecone.")
 

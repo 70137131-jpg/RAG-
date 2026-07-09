@@ -26,7 +26,12 @@ def create_rag_pipeline_from_config(config: RAGConfig, vector_store: VectorStore
         vector_store=vector_store,
         llm_model=config.llm.model,
         temperature=config.llm.temperature,
-        max_tokens=config.llm.max_tokens
+        max_tokens=config.llm.max_tokens,
+        llm_provider=config.llm.provider,
+        openrouter_api_key=config.llm.openrouter_api_key,
+        openrouter_base_url=config.llm.openrouter_base_url,
+        openrouter_site_url=config.llm.openrouter_site_url,
+        openrouter_app_name=config.llm.openrouter_app_name,
     )
 
 

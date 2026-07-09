@@ -1,144 +1,107 @@
-"""
-Tests for vector_store module
-"""
+from unittest.mock import Mock
 
-import unittest
-from unittest.mock import Mock, patch, MagicMock
-import numpy as np
+from config import VectorStoreConfig
 from vector_store import VectorStore
 
 
-class TestVectorStore(unittest.TestCase):
-    """Test cases for VectorStore"""
+def build_vector_store(monkeypatch):
+    mock_index = Mock()
+    mock_index.query.return_value = {
+        "matches": [
+            {
+                "id": "doc1",
+                "score": 0.9,
+                "metadata": {"text": "Text 1", "source_id": "doc1"},
+            },
+            {
+                "id": "doc2",
+                "score": 0.8,
+                "metadata": {"text": "Text 2", "source_id": "doc2"},
+            },
+        ]
+    }
+    mock_stats = Mock()
+    mock_stats.total_vector_count = 42
+    mock_index.describe_index_stats.return_value = mock_stats
 
-    @patch('vector_store.chromadb.PersistentClient')
-    @patch('vector_store.SentenceTransformer')
-    def setUp(self, mock_sentence_transformer, mock_chroma_client):
-        """Set up test fixtures"""
-        # Mock ChromaDB client
-        self.mock_collection = Mock()
-        self.mock_collection.count = Mock(return_value=0)
+    mock_pc = Mock()
+    mock_pc.Index.return_value = mock_index
+    mock_pc.inference.embed.return_value = [{"values": [0.1, 0.2, 0.3]}]
 
-        mock_client_instance = Mock()
-        mock_client_instance.get_collection = Mock(side_effect=ValueError("Collection not found"))
-        mock_client_instance.create_collection = Mock(return_value=self.mock_collection)
-        mock_chroma_client.return_value = mock_client_instance
+    monkeypatch.setattr("vector_store.Pinecone", Mock(return_value=mock_pc))
 
-        # Mock embedding model - return numpy array (code calls .tolist())
-        mock_model = Mock()
-        mock_model.encode = Mock(return_value=np.array([0.1, 0.2, 0.3]))
-        mock_sentence_transformer.return_value = mock_model
-
-        # Create VectorStore instance
-        self.vs = VectorStore(
-            collection_name="test_collection",
-            persist_directory="./test_db",
-            use_token_chunking=False  # Use char-based for simplicity
-        )
-
-    def test_initialization(self):
-        """Test VectorStore initialization"""
-        self.assertEqual(self.vs.collection_name, "test_collection")
-        self.assertEqual(self.vs.persist_directory, "./test_db")
-        self.assertIsNotNone(self.vs.embedding_model)
-        self.assertIsNotNone(self.vs.collection)
-
-    def test_chunk_text_by_chars(self):
-        """Test character-based text chunking"""
-        text = "This is a test. " * 100  # Long text
-        chunks = self.vs.chunk_text_by_chars(text, chunk_size=50, overlap=10)
-
-        # Verify chunks
-        self.assertTrue(len(chunks) > 1)
-        for chunk in chunks:
-            self.assertIsInstance(chunk, str)
-            self.assertTrue(len(chunk) > 0)
-
-    def test_search_basic(self):
-        """Test basic search functionality"""
-        # Mock collection query response
-        self.mock_collection.query = Mock(return_value={
-            'ids': [['doc1', 'doc2', 'doc3']],
-            'documents': [['Text 1', 'Text 2', 'Text 3']],
-            'metadatas': [[{'key': 'value'}, {}, {}]],
-            'distances': [[0.1, 0.2, 0.3]]
-        })
-
-        # Perform search
-        results = self.vs.search("test query", top_k=3, rerank=False)
-
-        # Verify results
-        self.assertEqual(len(results), 3)
-        self.assertEqual(results[0]['id'], 'doc1')
-        self.assertEqual(results[0]['text'], 'Text 1')
-        self.assertEqual(results[0]['distance'], 0.1)
-
-    def test_search_empty_collection(self):
-        """Test search on empty collection"""
-        self.mock_collection.query = Mock(return_value={
-            'ids': [[]],
-            'documents': [[]],
-            'metadatas': [[]],
-            'distances': [[]]
-        })
-
-        results = self.vs.search("test query", top_k=3)
-        self.assertEqual(len(results), 0)
-
-    def test_get_stats(self):
-        """Test getting vector store statistics"""
-        self.mock_collection.count = Mock(return_value=100)
-
-        stats = self.vs.get_stats()
-
-        self.assertIn('collection_name', stats)
-        self.assertIn('total_documents', stats)
-        self.assertIn('embedding_model', stats)
-        self.assertEqual(stats['total_documents'], 100)
+    config = VectorStoreConfig(
+        api_key="pinecone-key",
+        index_name="test-index",
+        embedding_model="multilingual-e5-large",
+        chunk_size=10,
+        chunk_overlap=2,
+    )
+    return VectorStore(config), mock_pc, mock_index
 
 
-class TestTokenChunking(unittest.TestCase):
-    """Test token-aware chunking"""
+def test_initialization_uses_pinecone_index(monkeypatch):
+    vector_store, mock_pc, _ = build_vector_store(monkeypatch)
 
-    @patch('vector_store.chromadb.PersistentClient')
-    @patch('vector_store.SentenceTransformer')
-    @patch('vector_store.tiktoken.get_encoding')
-    def test_token_chunking(self, mock_tiktoken, mock_sentence_transformer, mock_chroma_client):
-        """Test token-aware text chunking"""
-        # Mock tokenizer
-        mock_tokenizer = Mock()
-        mock_tokenizer.encode = Mock(return_value=list(range(100)))  # 100 tokens
-        mock_tokenizer.decode = Mock(side_effect=lambda x: f"chunk_{len(x)}_tokens")
-        mock_tiktoken.return_value = mock_tokenizer
-
-        # Mock ChromaDB
-        mock_collection = Mock()
-        mock_collection.count = Mock(return_value=0)
-        mock_client_instance = Mock()
-        mock_client_instance.create_collection = Mock(return_value=mock_collection)
-        mock_chroma_client.return_value = mock_client_instance
-
-        # Mock embedding model
-        mock_model = Mock()
-        mock_sentence_transformer.return_value = mock_model
-
-        # Create VectorStore with token chunking
-        vs = VectorStore(
-            collection_name="test",
-            use_token_chunking=True,
-            chunk_size=30,
-            chunk_overlap=5
-        )
-
-        # Test chunking
-        text = "A" * 1000
-        chunks = vs.chunk_text_by_tokens(text, chunk_size=30, overlap=5)
-
-        # Verify
-        self.assertTrue(len(chunks) > 1)
-        mock_tokenizer.encode.assert_called()
-        mock_tokenizer.decode.assert_called()
+    mock_pc.Index.assert_called_once_with("test-index")
+    assert vector_store.index_name == "test-index"
+    assert vector_store.embedding_model == "multilingual-e5-large"
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_chunk_text_splits_long_text(monkeypatch):
+    vector_store, _, _ = build_vector_store(monkeypatch)
+    text = " ".join([f"word{i}" for i in range(40)])
+
+    chunks = vector_store.chunk_text(text, chunk_size=5, overlap=1)
+
+    assert len(chunks) > 1
+    assert all(isinstance(chunk, str) and chunk for chunk in chunks)
+
+
+def test_search_embeds_query_and_formats_matches(monkeypatch):
+    vector_store, mock_pc, mock_index = build_vector_store(monkeypatch)
+
+    results = vector_store.search("test query", top_k=2)
+
+    mock_pc.inference.embed.assert_called_once_with(
+        model="multilingual-e5-large",
+        inputs=["test query"],
+        parameters={"input_type": "query", "truncate": "END"},
+    )
+    mock_index.query.assert_called_once_with(
+        vector=[0.1, 0.2, 0.3],
+        top_k=2,
+        include_metadata=True,
+    )
+    assert results[0] == {
+        "id": "doc1",
+        "text": "Text 1",
+        "metadata": {"text": "Text 1", "source_id": "doc1"},
+        "distance": 0.09999999999999998,
+    }
+
+
+def test_get_stats(monkeypatch):
+    vector_store, _, _ = build_vector_store(monkeypatch)
+
+    stats = vector_store.get_stats()
+
+    assert stats == {
+        "collection_name": "test-index",
+        "total_documents": 42,
+        "embedding_model": "multilingual-e5-large",
+        "persist_directory": "pinecone-cloud",
+    }
+
+
+def test_add_documents_embeds_and_upserts(monkeypatch):
+    vector_store, mock_pc, mock_index = build_vector_store(monkeypatch)
+
+    vector_store.add_documents([{"id": "doc1", "text": "Document text"}], batch_size=1)
+
+    mock_pc.inference.embed.assert_called_with(
+        model="multilingual-e5-large",
+        inputs=["Document text"],
+        parameters={"input_type": "passage", "truncate": "END"},
+    )
+    mock_index.upsert.assert_called_once()

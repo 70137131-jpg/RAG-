@@ -2,16 +2,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from rag_pipeline import RAGPipeline
-from data_loader import SQuADLoader
-from vector_store import VectorStore
-from config import RAGConfig, BALANCED_CONFIG
+from config import RAGConfig
 from config_utils import create_vector_store_from_config, create_rag_pipeline_from_config, create_data_loader_from_config
 from typing import List, Dict
 import json
 from tqdm import tqdm
-from collections import defaultdict
 import re
 import sys
+import asyncio
 
 # Ensure UTF-8 output in Windows terminals to avoid UnicodeEncodeError
 try:
@@ -121,7 +119,7 @@ class RAGEvaluator:
             for gt in ground_truths
         )
 
-    def evaluate_retrieval(
+    async def evaluate_retrieval(
         self,
         qa_pairs: List[Dict],
         top_k: int = 3
@@ -147,7 +145,7 @@ class RAGEvaluator:
             expected_context = self.normalize_answer(qa['context'])
 
             # Retrieve documents
-            retrieved = self.rag.retrieve(question, top_k=top_k)
+            retrieved = await self.rag.retrieve_async(question, top_k=top_k)
 
             # Check if the correct context is in retrieved results
             found_rank = None
@@ -176,7 +174,7 @@ class RAGEvaluator:
 
         return metrics
 
-    def evaluate_generation(
+    async def evaluate_generation(
         self,
         qa_pairs: List[Dict],
         top_k: int = 3,
@@ -209,7 +207,7 @@ class RAGEvaluator:
 
             try:
                 # Query the RAG pipeline
-                response = self.rag.query(question, top_k=top_k)
+                response = await self.rag.query_async(question, top_k=top_k)
                 prediction = response['answer']
 
                 # Calculate metrics
@@ -258,7 +256,7 @@ class RAGEvaluator:
             json.dump(results, f, indent=2, ensure_ascii=False)
 
 
-def main():
+async def main():
     """Run full evaluation"""
     import argparse
 
@@ -269,21 +267,12 @@ def main():
                         help="Number of contexts to retrieve (uses config default if not specified)")
     parser.add_argument("--output", type=str, default="evaluation_results.json",
                         help="Output file for results")
-    parser.add_argument("--config", type=str, choices=["default", "fast", "accurate", "balanced"],
-                        default="balanced", help="Configuration profile to use")
+    parser.add_argument("--config", type=str, choices=["default"],
+                        default="default", help="Configuration profile to use")
     args = parser.parse_args()
 
     # Load configuration
-    if args.config == "default":
-        config = RAGConfig.default()
-    elif args.config == "fast":
-        from config import FAST_CONFIG
-        config = FAST_CONFIG
-    elif args.config == "accurate":
-        from config import ACCURATE_CONFIG
-        config = ACCURATE_CONFIG
-    else:
-        config = BALANCED_CONFIG
+    config = RAGConfig.from_env()
 
     # Override config values if specified
     if args.max_samples:
@@ -306,12 +295,12 @@ def main():
     print("\nInitializing vector store...")
     vector_store = create_vector_store_from_config(config.vector_store)
 
-    # Check if collection already exists with documents
-    if vector_store.collection.count() == 0:
+    # Check if index already exists with documents
+    if vector_store.get_stats()["total_documents"] == 0:
         print("Adding documents to vector store...")
         vector_store.add_documents(contexts)
     else:
-        print(f"Using existing collection with {vector_store.collection.count()} documents")
+        print(f"Using existing index with {vector_store.get_stats()['total_documents']} documents")
 
     # Initialize RAG pipeline
     print("\nInitializing RAG pipeline...")
@@ -324,7 +313,7 @@ def main():
     print("\n" + "="*60)
     print("RETRIEVAL EVALUATION")
     print("="*60)
-    retrieval_metrics = evaluator.evaluate_retrieval(qa_pairs[:50], top_k=top_k)
+    retrieval_metrics = await evaluator.evaluate_retrieval(qa_pairs[:50], top_k=top_k)
     print("\nRetrieval Metrics:")
     for key, value in retrieval_metrics.items():
         print(f"  {key}: {value:.4f}" if isinstance(value, float) else f"  {key}: {value}")
@@ -333,7 +322,7 @@ def main():
     print("\n" + "="*60)
     print("GENERATION EVALUATION")
     print("="*60)
-    eval_results = evaluator.evaluate_generation(
+    eval_results = await evaluator.evaluate_generation(
         qa_pairs,
         top_k=top_k,
         max_samples=min(20, len(qa_pairs))  # Limit for API costs
@@ -359,4 +348,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
