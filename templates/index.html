@@ -26,7 +26,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
         integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp"
         crossorigin="anonymous"></script>
-    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}?v=3">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}?v=4">
 </head>
 
 <body>
@@ -115,6 +115,17 @@
                 <div class="composer-wrapper centered" id="composerWrapper">
                     <div class="greeting" id="greeting">
                         <h2>How can I help you research today?</h2>
+                        <p class="greeting-sub">Try a question from the indexed articles:</p>
+                        <div class="suggestion-chips" id="suggestionChips">
+                            <button type="button" class="suggestion-chip">Who were the Normans and where did they
+                                originate?</button>
+                            <button type="button" class="suggestion-chip">In what country is Normandy
+                                located?</button>
+                            <button type="button" class="suggestion-chip">What religion did the Normans
+                                follow?</button>
+                            <button type="button" class="suggestion-chip">What is computational complexity
+                                theory?</button>
+                        </div>
                     </div>
                     <form id="chatForm" class="composer">
                         <div class="input-wrapper">
@@ -236,7 +247,7 @@
         </aside>
     </div>
     <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="false"></div>
-    <script src="{{ url_for('static', path='js/chat.js') }}?v=3"></script>
+    <script src="{{ url_for('static', path='js/chat.js') }}?v=4"></script>
 </body>
 
 </html>

@@ -354,6 +354,15 @@ class ChatBot {
         if (this.indexDataBtn) {
             this.indexDataBtn.addEventListener('click', () => this.indexDataset());
         }
+
+        document.querySelectorAll('.suggestion-chip').forEach((chip) => {
+            chip.addEventListener('click', () => {
+                if (this.isLoading || !this.questionInput) return;
+                this.questionInput.value = chip.textContent.replace(/\s+/g, ' ').trim();
+                this.updateSendState();
+                this.sendMessage();
+            });
+        });
     }
 
     toggleSettingsDropdown(force) {

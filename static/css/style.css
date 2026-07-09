@@ -764,6 +764,38 @@ a {
     font-weight: 600;
 }
 
+.greeting-sub {
+    margin-top: 12px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.suggestion-chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+    max-width: 640px;
+}
+
+.suggestion-chip {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.suggestion-chip:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
 /* Composer */
 .composer {
     width: 100%;
