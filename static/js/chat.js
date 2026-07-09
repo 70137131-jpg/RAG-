@@ -9,12 +9,10 @@ class ChatBot {
         this.typingIndicator = document.getElementById('typingIndicator');
         this.composerWrapper = document.getElementById('composerWrapper');
         this.greeting = document.getElementById('greeting');
-        
-        // New elements
+
         this.settingsBtn = document.getElementById('settingsBtn');
         this.settingsDropdown = document.getElementById('settingsDropdown');
         this.topKSelect = document.getElementById('topKSelect');
-        this.attachBtn = document.getElementById('attachBtn');
         this.modelName = document.getElementById('modelName');
         this.docCount = document.getElementById('docCount');
         this.sessionHistoryList = document.getElementById('sessionHistoryList');
@@ -24,13 +22,18 @@ class ChatBot {
         this.adminTokenInput = document.getElementById('adminTokenInput');
         this.saveAdminTokenBtn = document.getElementById('saveAdminTokenBtn');
         this.adminTokenHint = document.getElementById('adminTokenHint');
-        
-        // UI Buttons
+        this.indexDataBtn = document.getElementById('indexDataBtn');
+        this.indexLoader = document.getElementById('indexLoader');
+
         this.shareBtn = document.getElementById('shareBtn');
-        this.userProfileBtn = document.getElementById('userProfileBtn');
-        this.chatsNavBtn = document.getElementById('chatsNavBtn');
-        this.chatTitleBtn = document.getElementById('chatTitleBtn');
-        
+        this.menuBtn = document.getElementById('menuBtn');
+        this.leftSidebar = document.getElementById('leftSidebar');
+        this.sidebarBackdrop = document.getElementById('sidebarBackdrop');
+        this.searchToggleBtn = document.getElementById('searchToggleBtn');
+        this.sessionSearch = document.getElementById('sessionSearch');
+        this.sessionSearchInput = document.getElementById('sessionSearchInput');
+        this.toastContainer = document.getElementById('toastContainer');
+
         this.isLoading = false;
         this.hasMessages = false;
         this.MAX_QUESTION_LENGTH = 5000; // Keep in sync with backend QueryRequest validator
@@ -39,19 +42,15 @@ class ChatBot {
         this.sessionStorageKey = 'rag_chat_sessions';
         this.sessions = this.readStoredSessions();
         this.adminToken = '';
+        this.sessionFilter = '';
+        this.historyLoadController = null;
 
-        // Configure marked.js for markdown parsing
+        // Markdown parsing; syntax highlighting is applied post-render with
+        // hljs.highlightElement (marked's `highlight` option is deprecated).
         if (typeof marked !== 'undefined') {
             marked.setOptions({
                 breaks: true,
-                gfm: true,
-                highlight: function(code, lang) {
-                    if (typeof hljs !== 'undefined') {
-                        const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-                        return hljs.highlight(code, { language }).value;
-                    }
-                    return code;
-                }
+                gfm: true
             });
         }
 
@@ -62,6 +61,47 @@ class ChatBot {
         this.loadSystemStats();
         this.loadChatHistory();
     }
+
+    // ---------- Toast notifications ----------
+
+    showToast(message, type = 'info', duration = 3500) {
+        if (!this.toastContainer) {
+            console.log(`[${type}] ${message}`);
+            return;
+        }
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        this.toastContainer.appendChild(toast);
+        setTimeout(() => {
+            toast.classList.add('hiding');
+            setTimeout(() => toast.remove(), 350);
+        }, duration);
+    }
+
+    async copyToClipboard(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (error) {
+            // Fallback for non-secure contexts or denied permissions
+            try {
+                const helper = document.createElement('textarea');
+                helper.value = text;
+                helper.style.position = 'fixed';
+                helper.style.opacity = '0';
+                document.body.appendChild(helper);
+                helper.select();
+                const ok = document.execCommand('copy');
+                helper.remove();
+                return ok;
+            } catch (fallbackError) {
+                return false;
+            }
+        }
+    }
+
+    // ---------- Shared helpers ----------
 
     getAdminHeaders() {
         const headers = { 'Content-Type': 'application/json' };
@@ -87,6 +127,13 @@ class ChatBot {
         } catch (error) {
             return { error: text };
         }
+    }
+
+    formatTime(isoString) {
+        if (!isoString) return '';
+        const date = new Date(isoString);
+        if (Number.isNaN(date.getTime())) return '';
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
     setSystemStatus(state, text) {
@@ -115,9 +162,11 @@ class ChatBot {
         }
     }
 
+    // ---------- Layout: resizers and mobile drawer ----------
+
     initResizers() {
         const leftResizer = document.getElementById('leftResizer');
-        const leftSidebar = document.getElementById('leftSidebar');
+        const leftSidebar = this.leftSidebar;
         const rightResizer = document.getElementById('rightResizer');
         const rightSidebar = document.getElementById('rightSidebar');
 
@@ -125,7 +174,7 @@ class ChatBot {
         let isResizingRight = false;
 
         if (leftResizer && leftSidebar) {
-            leftResizer.addEventListener('mousedown', (e) => {
+            leftResizer.addEventListener('mousedown', () => {
                 isResizingLeft = true;
                 leftResizer.classList.add('resizing');
                 document.body.style.cursor = 'col-resize';
@@ -134,7 +183,7 @@ class ChatBot {
         }
 
         if (rightResizer && rightSidebar) {
-            rightResizer.addEventListener('mousedown', (e) => {
+            rightResizer.addEventListener('mousedown', () => {
                 isResizingRight = true;
                 rightResizer.classList.add('resizing');
                 document.body.style.cursor = 'col-resize';
@@ -162,16 +211,36 @@ class ChatBot {
         document.addEventListener('mouseup', () => {
             if (isResizingLeft) {
                 isResizingLeft = false;
-                if(leftResizer) leftResizer.classList.remove('resizing');
+                if (leftResizer) leftResizer.classList.remove('resizing');
             }
             if (isResizingRight) {
                 isResizingRight = false;
-                if(rightResizer) rightResizer.classList.remove('resizing');
+                if (rightResizer) rightResizer.classList.remove('resizing');
             }
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
         });
     }
+
+    openMobileSidebar() {
+        if (!this.leftSidebar) return;
+        this.leftSidebar.classList.add('mobile-open');
+        if (this.sidebarBackdrop) this.sidebarBackdrop.hidden = false;
+        if (this.menuBtn) this.menuBtn.setAttribute('aria-expanded', 'true');
+    }
+
+    closeMobileSidebar() {
+        if (!this.leftSidebar) return;
+        this.leftSidebar.classList.remove('mobile-open');
+        if (this.sidebarBackdrop) this.sidebarBackdrop.hidden = true;
+        if (this.menuBtn) this.menuBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    isMobileSidebarOpen() {
+        return Boolean(this.leftSidebar && this.leftSidebar.classList.contains('mobile-open'));
+    }
+
+    // ---------- Event wiring ----------
 
     initEventListeners() {
         if (this.chatForm) {
@@ -204,46 +273,70 @@ class ChatBot {
         if (this.settingsBtn && this.settingsDropdown) {
             this.settingsBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.settingsDropdown.classList.toggle('active');
+                this.toggleSettingsDropdown();
             });
 
             document.addEventListener('click', (e) => {
                 if (!this.settingsDropdown.contains(e.target) && !this.settingsBtn.contains(e.target)) {
-                    this.settingsDropdown.classList.remove('active');
+                    this.toggleSettingsDropdown(false);
                 }
             });
         }
 
-        if (this.attachBtn) {
-            this.attachBtn.addEventListener('click', () => {
-                alert('Document upload is not currently supported in this demo environment.');
+        // One Escape handler for every dismissible surface
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            if (this.settingsDropdown && this.settingsDropdown.classList.contains('active')) {
+                this.toggleSettingsDropdown(false);
+                if (this.settingsBtn) this.settingsBtn.focus();
+            } else if (this.isMobileSidebarOpen()) {
+                this.closeMobileSidebar();
+                if (this.menuBtn) this.menuBtn.focus();
+            }
+        });
+
+        if (this.menuBtn) {
+            this.menuBtn.addEventListener('click', () => {
+                if (this.isMobileSidebarOpen()) {
+                    this.closeMobileSidebar();
+                } else {
+                    this.openMobileSidebar();
+                }
+            });
+        }
+
+        if (this.sidebarBackdrop) {
+            this.sidebarBackdrop.addEventListener('click', () => this.closeMobileSidebar());
+        }
+
+        if (this.searchToggleBtn && this.sessionSearch && this.sessionSearchInput) {
+            this.searchToggleBtn.addEventListener('click', () => {
+                const showing = this.sessionSearch.hidden;
+                this.sessionSearch.hidden = !showing;
+                this.searchToggleBtn.setAttribute('aria-expanded', String(showing));
+                if (showing) {
+                    this.sessionSearchInput.focus();
+                } else {
+                    this.sessionSearchInput.value = '';
+                    this.sessionFilter = '';
+                    this.renderSessionSidebar();
+                }
+            });
+
+            this.sessionSearchInput.addEventListener('input', () => {
+                this.sessionFilter = this.sessionSearchInput.value;
+                this.renderSessionSidebar();
             });
         }
 
         if (this.shareBtn) {
-            this.shareBtn.addEventListener('click', () => {
-                navigator.clipboard.writeText(window.location.href);
-                alert('URL copied to clipboard!');
-            });
-        }
-
-        if (this.userProfileBtn) {
-            this.userProfileBtn.addEventListener('click', () => {
-                alert('User profile settings coming soon.');
-            });
-        }
-
-        if (this.chatsNavBtn) {
-            this.chatsNavBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const historyEl = document.getElementById('sidebarHistory');
-                if(historyEl) historyEl.scrollIntoView({ behavior: 'smooth' });
-            });
-        }
-
-        if (this.chatTitleBtn) {
-            this.chatTitleBtn.addEventListener('click', () => {
-                alert('Chat configuration coming soon.');
+            this.shareBtn.addEventListener('click', async () => {
+                const copied = await this.copyToClipboard(window.location.href);
+                if (copied) {
+                    this.showToast('Link copied to clipboard', 'success');
+                } else {
+                    this.showToast('Could not copy the link', 'error');
+                }
             });
         }
 
@@ -252,43 +345,55 @@ class ChatBot {
                 this.adminToken = this.adminTokenInput.value.trim();
                 this.updateAdminControls();
                 this.loadSystemStats();
+                if (this.adminToken) {
+                    this.showToast('Admin token saved for this session', 'success');
+                }
             });
         }
 
-        this.indexDataBtn = document.getElementById('indexDataBtn');
-        this.indexLoader = document.getElementById('indexLoader');
-
         if (this.indexDataBtn) {
-            this.indexDataBtn.addEventListener('click', async () => {
-                if (!this.adminToken) {
-                    alert('Enter the admin token before indexing data.');
-                    return;
-                }
-                this.indexDataBtn.style.display = 'none';
-                if (this.indexLoader) this.indexLoader.style.display = 'flex';
-                
-                try {
-                    const response = await fetch('/api/index-data', {
-                        method: 'POST',
-                        headers: this.getAdminHeaders()
-                    });
-                    const data = await this.parseJsonResponse(response);
-                    if (response.ok && data.success) {
-                        alert(`Successfully indexed ${data.indexed_count} documents!`);
-                        this.loadSystemStats();
-                    } else if (response.status === 401 || response.status === 403) {
-                        alert('Indexing failed: the admin token was rejected.');
-                    } else {
-                        alert(`Failed to index data: ${data.detail || data.error}`);
-                    }
-                } catch (err) {
-                    alert('Error connecting to the server while indexing.');
-                } finally {
-                    this.indexDataBtn.style.display = 'flex';
-                    if (this.indexLoader) this.indexLoader.style.display = 'none';
-                    this.updateAdminControls();
-                }
+            this.indexDataBtn.addEventListener('click', () => this.indexDataset());
+        }
+    }
+
+    toggleSettingsDropdown(force) {
+        if (!this.settingsDropdown || !this.settingsBtn) return;
+        const shouldOpen = typeof force === 'boolean'
+            ? force
+            : !this.settingsDropdown.classList.contains('active');
+        this.settingsDropdown.classList.toggle('active', shouldOpen);
+        this.settingsBtn.setAttribute('aria-expanded', String(shouldOpen));
+    }
+
+    async indexDataset() {
+        if (!this.adminToken) {
+            this.showToast('Enter the admin token before indexing data', 'error');
+            return;
+        }
+        this.indexDataBtn.style.display = 'none';
+        if (this.indexLoader) this.indexLoader.style.display = 'flex';
+
+        try {
+            const response = await fetch('/api/index-data', {
+                method: 'POST',
+                headers: this.getAdminHeaders()
             });
+            const data = await this.parseJsonResponse(response);
+            if (response.ok && data.success) {
+                this.showToast(`Successfully indexed ${data.indexed_count} documents`, 'success', 5000);
+                this.loadSystemStats();
+            } else if (response.status === 401 || response.status === 403) {
+                this.showToast('Indexing failed: the admin token was rejected', 'error');
+            } else {
+                const message = data.error || this.formatErrorDetail(data.detail) || 'Unknown error';
+                this.showToast(`Failed to index data: ${message}`, 'error', 5000);
+            }
+        } catch (err) {
+            this.showToast('Error connecting to the server while indexing', 'error');
+        } finally {
+            this.indexDataBtn.style.display = 'flex';
+            if (this.indexLoader) this.indexLoader.style.display = 'none';
+            this.updateAdminControls();
         }
     }
 
@@ -306,7 +411,7 @@ class ChatBot {
     switchToChatView() {
         if (this.hasMessages) return;
         this.hasMessages = true;
-        
+
         if (this.greeting) this.greeting.style.display = 'none';
         if (this.composerWrapper) this.composerWrapper.classList.remove('centered');
         if (this.chatMessages) this.chatMessages.style.display = 'flex';
@@ -314,7 +419,7 @@ class ChatBot {
 
     switchToWelcomeView() {
         this.hasMessages = false;
-        
+
         if (this.greeting) this.greeting.style.display = 'block';
         if (this.composerWrapper) this.composerWrapper.classList.add('centered');
         if (this.chatMessages) {
@@ -322,6 +427,8 @@ class ChatBot {
             this.chatMessages.innerHTML = '';
         }
     }
+
+    // ---------- Stats and health ----------
 
     async loadSystemStats() {
         try {
@@ -348,7 +455,6 @@ class ChatBot {
             if (healthRes.ok) {
                 this.setSystemStatus('green', 'Ready');
                 if (this.docCount) this.docCount.textContent = `${healthData.documents_indexed || 0} docs indexed`;
-                if (this.modelName) this.modelName.textContent = 'LLM';
             } else {
                 this.setSystemStatus('yellow', 'Degraded');
                 if (this.docCount) this.docCount.textContent = `${healthData.documents_indexed || 0} docs indexed`;
@@ -369,25 +475,7 @@ class ChatBot {
         }
     }
 
-    async loadChatHistory() {
-        try {
-            const response = await fetch('/api/history');
-            const data = await this.parseJsonResponse(response);
-
-            if (response.ok && data.success) {
-                this.currentSessionId = data.session_id;
-                this.renderConversation(data.history || []);
-                if (data.history && data.history.length > 0) {
-                    this.upsertSession(this.currentSessionId, this.getSessionTitle(data.history));
-                } else {
-                    this.renderSessionSidebar();
-                }
-                this.loadSessionLogs();
-            }
-        } catch (error) {
-            console.error('Error loading chat history:', error);
-        }
-    }
+    // ---------- Session persistence ----------
 
     readStoredSessions() {
         try {
@@ -425,32 +513,140 @@ class ChatBot {
         this.renderSessionSidebar();
     }
 
+    removeSession(sessionId) {
+        this.sessions = this.sessions.filter((session) => session.id !== sessionId);
+        this.saveStoredSessions();
+        this.renderSessionSidebar();
+    }
+
+    deleteSession(sessionId) {
+        const wasCurrent = sessionId === this.currentSessionId;
+        this.removeSession(sessionId);
+        this.showToast('Chat removed from sidebar', 'info');
+        if (wasCurrent) {
+            this.startNewChat();
+        }
+    }
+
     renderSessionSidebar() {
         if (!this.sessionHistoryList) return;
 
         this.sessionHistoryList.innerHTML = '';
-        if (this.sessions.length === 0) {
+
+        const query = this.sessionFilter.trim().toLowerCase();
+        const visibleSessions = query
+            ? this.sessions.filter((session) => (session.title || '').toLowerCase().includes(query))
+            : this.sessions;
+
+        if (visibleSessions.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'empty-history';
-            empty.textContent = 'No saved chats yet';
+            empty.textContent = query ? 'No chats match your search' : 'No saved chats yet';
             this.sessionHistoryList.appendChild(empty);
             return;
         }
 
-        this.sessions.forEach((session) => {
-            const a = document.createElement('a');
-            a.href = '#';
-            a.className = `history-item${session.id === this.currentSessionId ? ' active' : ''}`;
-            a.textContent = session.title || 'Untitled chat';
-            a.title = session.title || 'Untitled chat';
+        visibleSessions.forEach((session) => {
+            const row = document.createElement('div');
+            row.className = `history-item-row${session.id === this.currentSessionId ? ' active' : ''}`;
+            row.setAttribute('role', 'listitem');
 
-            a.addEventListener('click', (e) => {
-                e.preventDefault();
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'history-item';
+            item.textContent = session.title || 'Untitled chat';
+            item.title = session.title || 'Untitled chat';
+            item.addEventListener('click', () => {
                 this.loadSession(session.id);
+                this.closeMobileSidebar();
             });
 
-            this.sessionHistoryList.appendChild(a);
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'history-delete-btn';
+            deleteBtn.setAttribute('aria-label', `Delete chat: ${session.title || 'Untitled chat'}`);
+            deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.deleteSession(session.id);
+            });
+
+            row.appendChild(item);
+            row.appendChild(deleteBtn);
+            this.sessionHistoryList.appendChild(row);
         });
+    }
+
+    // ---------- Conversation loading ----------
+
+    beginHistoryLoad() {
+        if (this.historyLoadController) {
+            this.historyLoadController.abort();
+        }
+        this.historyLoadController = new AbortController();
+        return this.historyLoadController.signal;
+    }
+
+    applySessionData(data) {
+        this.currentSessionId = data.session_id;
+        this.renderConversation(data.history || []);
+        if (data.history && data.history.length > 0) {
+            this.upsertSession(this.currentSessionId, this.getSessionTitle(data.history));
+        } else {
+            this.renderSessionSidebar();
+        }
+        this.loadSessionLogs();
+    }
+
+    async loadChatHistory() {
+        const signal = this.beginHistoryLoad();
+        try {
+            const response = await fetch('/api/history', { signal });
+            const data = await this.parseJsonResponse(response);
+
+            if (response.ok && data.success) {
+                this.applySessionData(data);
+            }
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.error('Error loading chat history:', error);
+            }
+        }
+    }
+
+    async loadSession(sessionId) {
+        if (!sessionId || sessionId === this.currentSessionId) return;
+
+        const signal = this.beginHistoryLoad();
+        try {
+            // Fetch first so expired sessions are detected before switching the cookie
+            const response = await fetch(`/api/history?session_id=${encodeURIComponent(sessionId)}`, { signal });
+            const data = await this.parseJsonResponse(response);
+            if (!response.ok || !data.success) {
+                this.showToast('Could not load that chat', 'error');
+                return;
+            }
+
+            if (!data.history || data.history.length === 0) {
+                this.removeSession(sessionId);
+                this.showToast('That chat has expired and is no longer available', 'error');
+                return;
+            }
+
+            await fetch('/api/switch-chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId }),
+                signal
+            });
+
+            this.applySessionData(data);
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.error('Error loading saved chat:', error);
+                this.showToast('Could not load that chat', 'error');
+            }
+        }
     }
 
     renderConversation(history) {
@@ -466,35 +662,8 @@ class ChatBot {
         this.switchToChatView();
         this.currentConversation.forEach((item) => {
             this.addMessage(item.question, 'user', null, false);
-            this.addMessage(item.answer, 'bot', item.sources || null, false);
+            this.addMessage(item.answer, 'bot', item.sources || null, false, item.timestamp);
         });
-    }
-
-    async loadSession(sessionId) {
-        if (!sessionId || sessionId === this.currentSessionId) return;
-
-        try {
-            await fetch('/api/switch-chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: sessionId })
-            });
-
-            const response = await fetch(`/api/history?session_id=${encodeURIComponent(sessionId)}`);
-            const data = await this.parseJsonResponse(response);
-            if (response.ok && data.success) {
-                this.currentSessionId = data.session_id;
-                this.renderConversation(data.history || []);
-                if (data.history && data.history.length > 0) {
-                    this.upsertSession(this.currentSessionId, this.getSessionTitle(data.history));
-                } else {
-                    this.renderSessionSidebar();
-                }
-                this.loadSessionLogs();
-            }
-        } catch (error) {
-            console.error('Error loading saved chat:', error);
-        }
     }
 
     async loadSessionLogs() {
@@ -566,6 +735,7 @@ class ChatBot {
                 this.switchToWelcomeView();
                 this.renderSessionSidebar();
                 this.renderSessionLogs([]);
+                this.closeMobileSidebar();
                 if (this.questionInput) {
                     this.questionInput.value = '';
                     this.autoResizeTextarea();
@@ -575,6 +745,7 @@ class ChatBot {
             }
         } catch (error) {
             console.error('Error starting new chat:', error);
+            this.showToast('Could not start a new chat', 'error');
         }
     }
 
@@ -585,6 +756,8 @@ class ChatBot {
             : question;
         this.upsertSession(this.currentSessionId, title);
     }
+
+    // ---------- Messages ----------
 
     escapeHtml(str) {
         const div = document.createElement('div');
@@ -607,18 +780,19 @@ class ChatBot {
         if (!question || this.isLoading) return;
 
         if (question.length > this.MAX_QUESTION_LENGTH) {
-            alert(`Question is too long. Maximum ${this.MAX_QUESTION_LENGTH} characters allowed.`);
+            this.showToast(`Question is too long. Maximum ${this.MAX_QUESTION_LENGTH} characters allowed.`, 'error');
             return;
         }
 
         const topK = this.topKSelect ? parseInt(this.topKSelect.value, 10) : 3;
-        
+        const sessionAtSend = this.currentSessionId;
+
         this.isLoading = true;
         this.updateSendState();
         this.switchToChatView();
-        
+
         this.addMessage(question, 'user');
-        
+
         this.questionInput.value = '';
         this.autoResizeTextarea();
         this.showTyping();
@@ -634,7 +808,15 @@ class ChatBot {
             this.hideTyping();
 
             if (response.ok && data.success) {
-                this.addMessage(data.answer, 'bot', data.sources);
+                // If the user switched chats while the request was in flight,
+                // don't paint the answer into the wrong transcript.
+                if (sessionAtSend && this.currentSessionId && this.currentSessionId !== sessionAtSend
+                    && data.session_id !== this.currentSessionId) {
+                    this.showToast('The answer was saved to your previous chat', 'info');
+                    return;
+                }
+
+                this.addMessage(data.answer, 'bot', data.sources, true, data.timestamp);
                 this.currentSessionId = data.session_id || this.currentSessionId;
                 this.currentConversation.push({
                     question,
@@ -665,7 +847,7 @@ class ChatBot {
         }
     }
 
-    addMessage(text, type, sources = null, animate = true) {
+    addMessage(text, type, sources = null, animate = true, timestamp = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}-message`;
         if (animate) messageDiv.style.animation = 'fadeIn 0.2s ease';
@@ -676,7 +858,13 @@ class ChatBot {
         if (type === 'bot') {
             const rawHtml = typeof marked !== 'undefined' ? marked.parse(text) : `<p>${this.escapeHtml(text)}</p>`;
             contentDiv.innerHTML = this.sanitizeHtml(rawHtml);
-            
+
+            if (typeof hljs !== 'undefined') {
+                contentDiv.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            }
+
             if (sources && sources.length > 0) {
                 contentDiv.appendChild(this.createSourcesDrawer(sources));
             }
@@ -686,6 +874,10 @@ class ChatBot {
 
         messageDiv.appendChild(contentDiv);
 
+        if (type === 'bot') {
+            messageDiv.appendChild(this.createMessageMeta(text, timestamp));
+        }
+
         if (this.chatMessages) {
             this.chatMessages.appendChild(messageDiv);
         }
@@ -693,25 +885,56 @@ class ChatBot {
         this.scrollToBottom();
     }
 
+    createMessageMeta(rawText, timestamp) {
+        const meta = document.createElement('div');
+        meta.className = 'message-meta';
+
+        const time = this.formatTime(timestamp);
+        if (time) {
+            const timeEl = document.createElement('span');
+            timeEl.textContent = time;
+            meta.appendChild(timeEl);
+        }
+
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'copy-btn';
+        copyBtn.setAttribute('aria-label', 'Copy answer');
+        copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copy';
+        copyBtn.addEventListener('click', async () => {
+            const copied = await this.copyToClipboard(rawText);
+            if (copied) {
+                this.showToast('Answer copied to clipboard', 'success', 2000);
+            } else {
+                this.showToast('Could not copy the answer', 'error');
+            }
+        });
+        meta.appendChild(copyBtn);
+
+        return meta;
+    }
+
     createSourcesDrawer(sources) {
         const panel = document.createElement('div');
-        // Added 'expanded' class by default
-        panel.className = 'sources-panel expanded';
+        // Collapsed by default; long transcripts stay scannable
+        panel.className = 'sources-panel';
 
         const toggle = document.createElement('button');
+        toggle.type = 'button';
         toggle.className = 'sources-toggle';
+        toggle.setAttribute('aria-expanded', 'false');
         toggle.innerHTML = `
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
             Sources (${sources.length})
         `;
-        
+
         const content = document.createElement('div');
         content.className = 'sources-content';
 
         sources.forEach((source, idx) => {
             const item = document.createElement('div');
             item.className = 'source-item';
-            
+
             const similarityScore = source.similarity ? ` · ${this.escapeHtml(String(source.similarity))}% match` : '';
             const safeId = this.escapeHtml(source.id || `Source ${idx + 1}`);
             const safeText = this.escapeHtml(source.text || '');
@@ -723,7 +946,8 @@ class ChatBot {
         });
 
         toggle.addEventListener('click', () => {
-            panel.classList.toggle('expanded');
+            const expanded = panel.classList.toggle('expanded');
+            toggle.setAttribute('aria-expanded', String(expanded));
         });
 
         panel.appendChild(toggle);
