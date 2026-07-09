@@ -33,7 +33,7 @@ class ChatBot {
         
         this.isLoading = false;
         this.hasMessages = false;
-        this.MAX_QUESTION_LENGTH = 2000;
+        this.MAX_QUESTION_LENGTH = 5000; // Keep in sync with backend QueryRequest validator
         this.currentSessionId = null;
         this.currentConversation = [];
         this.sessionStorageKey = 'rag_chat_sessions';
@@ -71,6 +71,14 @@ class ChatBot {
         return headers;
     }
 
+    formatErrorDetail(detail) {
+        // FastAPI validation errors (422) return detail as an array of objects
+        if (Array.isArray(detail)) {
+            return detail.map((item) => item.msg || JSON.stringify(item)).join('; ');
+        }
+        return detail;
+    }
+
     async parseJsonResponse(response) {
         const text = await response.text();
         if (!text) return {};
@@ -102,7 +110,7 @@ class ChatBot {
         }
         if (this.adminTokenHint) {
             this.adminTokenHint.textContent = hasToken
-                ? 'Admin token saved locally in this browser.'
+                ? 'Admin token active for this page session. Refreshing the page clears it.'
                 : 'Public chat works without a token. Admin actions stay locked until a valid token is saved.';
         }
     }
@@ -637,7 +645,7 @@ class ChatBot {
                 }
                 this.loadSystemStats(); // Update other stats
             } else {
-                const errorMessage = data.error || data.detail || `Request failed with status ${response.status}`;
+                const errorMessage = data.error || this.formatErrorDetail(data.detail) || `Request failed with status ${response.status}`;
                 this.addMessage(`Sorry, I encountered an error: ${errorMessage}`, 'bot');
             }
         } catch (error) {

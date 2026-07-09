@@ -198,6 +198,25 @@ def test_switch_chat_makes_saved_session_active(monkeypatch):
     assert history_response.json()["history"][0]["question"] == "First question"
 
 
+def test_switch_chat_rejects_malformed_session_id(monkeypatch):
+    with make_client(monkeypatch)[0] as client:
+        response = client.post(
+            "/api/switch-chat",
+            json={"session_id": "not-a-valid-session-id"},
+        )
+
+    assert response.status_code == 400
+    assert "Invalid session_id" in response.json()["detail"]
+
+
+def test_history_rejects_malformed_session_id_query_param(monkeypatch):
+    with make_client(monkeypatch)[0] as client:
+        response = client.get("/api/history?session_id=<script>alert(1)</script>")
+
+    assert response.status_code == 400
+    assert "Invalid session_id" in response.json()["detail"]
+
+
 def test_chat_logs_endpoint_requires_admin_token(monkeypatch):
     with make_client(monkeypatch)[0] as client:
         response = client.get("/api/chat-logs")
