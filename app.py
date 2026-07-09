@@ -359,6 +359,8 @@ async def get_history(
     redis_client: Redis = Depends(get_redis_client),
 ):
     """Get chat history for the current session, or a known saved session."""
+    if requested_session_id and not is_valid_session_id(requested_session_id):
+        raise HTTPException(status_code=400, detail="Invalid session_id format")
     active_session_id = requested_session_id or session_id
     history_key = f"chat_history:{active_session_id}"
     existing_history = await redis_client.get(history_key)
@@ -376,14 +378,7 @@ async def new_chat(request: Request, response: Response):
     """Start a fresh chat session without deleting prior session history."""
     old_session_id = request.cookies.get(SESSION_COOKIE)
     new_session_id = uuid.uuid4().hex
-    response.set_cookie(
-        SESSION_COOKIE,
-        new_session_id,
-        httponly=True,
-        samesite="lax",
-        secure=os.getenv("COOKIE_SECURE", "").lower() == "true",
-        max_age=60 * 60 * 24 * 30,
-    )
+    set_session_cookie(response, new_session_id)
 
     return {
         'success': True,
@@ -398,15 +393,10 @@ async def switch_chat(req: SwitchChatRequest, response: Response):
     session_id = req.session_id.strip()
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id cannot be empty")
+    if not is_valid_session_id(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session_id format")
 
-    response.set_cookie(
-        SESSION_COOKIE,
-        session_id,
-        httponly=True,
-        samesite="lax",
-        secure=os.getenv("COOKIE_SECURE", "").lower() == "true",
-        max_age=60 * 60 * 24 * 30,
-    )
+    set_session_cookie(response, session_id)
 
     return {
         'success': True,

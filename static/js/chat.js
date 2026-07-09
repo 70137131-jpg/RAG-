@@ -317,34 +317,56 @@ class ChatBot {
 
     async loadSystemStats() {
         try {
-            const response = await fetch('/api/stats');
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success && data.stats) {
-                    if (this.modelName) this.modelName.textContent = data.stats.llm_model || 'LLM';
-                    if (this.docCount) this.docCount.textContent = `${data.stats.total_documents} docs indexed`;
-                    const latencyStat = document.getElementById('latencyStat');
-                    if (latencyStat) latencyStat.textContent = `${data.stats.last_response_time_ms || '--'} ms`;
+            if (this.adminToken) {
+                const response = await fetch('/api/stats', {
+                    headers: this.getAdminHeaders()
+                });
+                const data = await this.parseJsonResponse(response);
+                if (response.ok && data.success && data.stats) {
+                    this.setSystemStatus('green', 'Ready');
+                    this.updateStatsPanel(data.stats);
+                    return;
                 }
-            } else if (response.status === 401) {
-                const healthRes = await fetch('/health');
-                if (healthRes.ok) {
-                    const healthData = await healthRes.json();
-                    if (this.docCount) this.docCount.textContent = `${healthData.documents_indexed || 0} docs indexed`;
-                    if (this.modelName) this.modelName.textContent = 'Gemini Pro'; 
+                if (response.status === 401 || response.status === 403) {
+                    this.setSystemStatus('yellow', 'Admin token rejected');
+                    if (this.adminTokenHint) {
+                        this.adminTokenHint.textContent = 'The token was rejected. Check it and save again.';
+                    }
                 }
             }
+
+            const healthRes = await fetch('/health');
+            const healthData = await this.parseJsonResponse(healthRes);
+            if (healthRes.ok) {
+                this.setSystemStatus('green', 'Ready');
+                if (this.docCount) this.docCount.textContent = `${healthData.documents_indexed || 0} docs indexed`;
+                if (this.modelName) this.modelName.textContent = 'LLM';
+            } else {
+                this.setSystemStatus('yellow', 'Degraded');
+                if (this.docCount) this.docCount.textContent = `${healthData.documents_indexed || 0} docs indexed`;
+            }
         } catch (error) {
+            this.setSystemStatus('red', 'Offline');
             console.error('Error fetching stats:', error);
+        }
+    }
+
+    updateStatsPanel(stats) {
+        if (!stats) return;
+        if (this.modelName) this.modelName.textContent = stats.llm_model || 'LLM';
+        if (this.docCount) this.docCount.textContent = `${stats.total_documents} docs indexed`;
+        const latencyStat = document.getElementById('latencyStat');
+        if (latencyStat) {
+            latencyStat.textContent = `${stats.last_response_time_ms || '--'} ms`;
         }
     }
 
     async loadChatHistory() {
         try {
             const response = await fetch('/api/history');
-            const data = await response.json();
+            const data = await this.parseJsonResponse(response);
 
-            if (data.success) {
+            if (response.ok && data.success) {
                 this.currentSessionId = data.session_id;
                 this.renderConversation(data.history || []);
                 if (data.history && data.history.length > 0) {
@@ -451,8 +473,8 @@ class ChatBot {
             });
 
             const response = await fetch(`/api/history?session_id=${encodeURIComponent(sessionId)}`);
-            const data = await response.json();
-            if (data.success) {
+            const data = await this.parseJsonResponse(response);
+            if (response.ok && data.success) {
                 this.currentSessionId = data.session_id;
                 this.renderConversation(data.history || []);
                 if (data.history && data.history.length > 0) {
@@ -472,8 +494,8 @@ class ChatBot {
 
         try {
             const response = await fetch('/api/session-chat-logs?limit=25');
-            const data = await response.json();
-            if (data.success) {
+            const data = await this.parseJsonResponse(response);
+            if (response.ok && data.success) {
                 this.renderSessionLogs(data.logs || []);
             }
         } catch (error) {
@@ -523,8 +545,8 @@ class ChatBot {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
-            const data = await response.json();
-            if (data.success) {
+            const data = await this.parseJsonResponse(response);
+            if (response.ok && data.success) {
                 this.currentSessionId = data.session_id;
                 this.currentConversation = [];
                 this.switchToWelcomeView();
@@ -594,10 +616,10 @@ class ChatBot {
                 body: JSON.stringify({ question, top_k: topK })
             });
 
-            const data = await response.json();
+            const data = await this.parseJsonResponse(response);
             this.hideTyping();
 
-            if (data.success) {
+            if (response.ok && data.success) {
                 this.addMessage(data.answer, 'bot', data.sources);
                 this.currentSessionId = data.session_id || this.currentSessionId;
                 this.currentConversation.push({
@@ -615,7 +637,7 @@ class ChatBot {
                 }
                 this.loadSystemStats(); // Update other stats
             } else {
-                const errorMessage = data.error || data.detail || 'Unknown error';
+                const errorMessage = data.error || data.detail || `Request failed with status ${response.status}`;
                 this.addMessage(`Sorry, I encountered an error: ${errorMessage}`, 'bot');
             }
         } catch (error) {
