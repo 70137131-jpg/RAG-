@@ -236,15 +236,8 @@ async def index(request: Request, response: Response):
         template_response = templates.TemplateResponse(request=request, name="index.html", context={"request": request})
         # Forward Set-Cookie header properly instead of raw_headers hack
         cookie_value = request.cookies.get(SESSION_COOKIE)
-        if not cookie_value:
-            template_response.set_cookie(
-                SESSION_COOKIE,
-                session_id,
-                httponly=True,
-                samesite="lax",
-                secure=os.getenv("COOKIE_SECURE", "").lower() == "true",
-                max_age=60 * 60 * 24 * 30,
-            )
+        if not cookie_value or not is_valid_session_id(cookie_value):
+            set_session_cookie(template_response, session_id)
         return template_response
     return HTMLResponse("<h1>RAG Backend Running</h1><p>Static files missing, but API is up.</p>")
 
@@ -285,7 +278,7 @@ async def query(
         message_entry = {
             "question": question,
             "answer": result["answer"],
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "response_time_ms": response_time_ms
         }
         
@@ -318,15 +311,18 @@ async def query(
             'question': question,
             'answer': result['answer'],
             'sources': sources,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'response_time_ms': response_time_ms,
             'session_id': session_id,
         }
         return response
 
-    except Exception as e:
+    except Exception:
         logger.exception("Error processing query")
-        return JSONResponse(status_code=500, content={'success': False, 'error': str(e)})
+        return JSONResponse(
+            status_code=500,
+            content={'success': False, 'error': 'An internal error occurred while processing your question. Please try again.'},
+        )
 
 @app.post("/api/index-data")
 async def index_data(
