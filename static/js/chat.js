@@ -1,60 +1,135 @@
-// RAG Chatbot — Gemini-style Chat Interface
-
 class ChatBot {
     constructor() {
-        this.chatView = document.getElementById('chatView');
-        this.welcomeView = document.getElementById('welcomeView');
+        this.chatArea = document.getElementById('chatArea');
         this.chatMessages = document.getElementById('chatMessages');
         this.chatForm = document.getElementById('chatForm');
         this.questionInput = document.getElementById('questionInput');
         this.sendBtn = document.getElementById('sendBtn');
         this.clearBtn = document.getElementById('clearBtn');
-        this.statsBtn = document.getElementById('statsBtn');
         this.typingIndicator = document.getElementById('typingIndicator');
-        this.charCount = document.getElementById('charCount');
-        this.topKSelect = document.getElementById('topK');
-        this.statsModal = document.getElementById('statsModal');
-        this.suggestionChips = document.getElementById('suggestionChips');
-
-        // Dashboard
-        this.dashboardBtn = document.getElementById('dashboardBtn');
-        this.dashboardPanel = document.getElementById('dashboardPanel');
-        this.dashboardClose = document.getElementById('dashboardClose');
-        this.dashboardOverlay = document.getElementById('dashboardOverlay');
-        this.dashboardContent = document.getElementById('dashboardContent');
-
+        this.composerWrapper = document.getElementById('composerWrapper');
+        this.greeting = document.getElementById('greeting');
+        
+        // New elements
+        this.settingsBtn = document.getElementById('settingsBtn');
+        this.settingsDropdown = document.getElementById('settingsDropdown');
+        this.topKSelect = document.getElementById('topKSelect');
+        this.attachBtn = document.getElementById('attachBtn');
+        this.modelName = document.getElementById('modelName');
+        this.docCount = document.getElementById('docCount');
+        this.sessionHistoryList = document.getElementById('sessionHistoryList');
+        this.chatLogList = document.getElementById('chatLogList');
+        
+        // UI Buttons
+        this.shareBtn = document.getElementById('shareBtn');
+        this.userProfileBtn = document.getElementById('userProfileBtn');
+        this.chatsNavBtn = document.getElementById('chatsNavBtn');
+        this.chatTitleBtn = document.getElementById('chatTitleBtn');
+        
         this.isLoading = false;
         this.hasMessages = false;
+        this.currentSessionId = null;
+        this.currentConversation = [];
+        this.sessionStorageKey = 'rag_chat_sessions';
+        this.sessions = this.readStoredSessions();
+
+        // Configure marked.js for markdown parsing
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                highlight: function(code, lang) {
+                    if (typeof hljs !== 'undefined') {
+                        const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+                        return hljs.highlight(code, { language }).value;
+                    }
+                    return code;
+                }
+            });
+        }
 
         this.initEventListeners();
+        this.initResizers();
         this.autoResizeTextarea();
+        this.loadSystemStats();
         this.loadChatHistory();
     }
 
+    initResizers() {
+        const leftResizer = document.getElementById('leftResizer');
+        const leftSidebar = document.getElementById('leftSidebar');
+        const rightResizer = document.getElementById('rightResizer');
+        const rightSidebar = document.getElementById('rightSidebar');
+
+        let isResizingLeft = false;
+        let isResizingRight = false;
+
+        if (leftResizer && leftSidebar) {
+            leftResizer.addEventListener('mousedown', (e) => {
+                isResizingLeft = true;
+                leftResizer.classList.add('resizing');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            });
+        }
+
+        if (rightResizer && rightSidebar) {
+            rightResizer.addEventListener('mousedown', (e) => {
+                isResizingRight = true;
+                rightResizer.classList.add('resizing');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            });
+        }
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizingLeft && !isResizingRight) return;
+            e.preventDefault(); // Prevent text selection
+
+            if (isResizingLeft) {
+                const newWidth = e.clientX;
+                if (newWidth >= 200 && newWidth <= 600) {
+                    leftSidebar.style.width = `${newWidth}px`;
+                }
+            } else if (isResizingRight) {
+                const newWidth = document.body.clientWidth - e.clientX;
+                if (newWidth >= 200 && newWidth <= 600) {
+                    rightSidebar.style.width = `${newWidth}px`;
+                }
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizingLeft) {
+                isResizingLeft = false;
+                if(leftResizer) leftResizer.classList.remove('resizing');
+            }
+            if (isResizingRight) {
+                isResizingRight = false;
+                if(rightResizer) rightResizer.classList.remove('resizing');
+            }
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        });
+    }
+
     initEventListeners() {
-        // Form submission
         if (this.chatForm) {
-            this.chatForm.addEventListener('submit', (e) => {
-                e.preventDefault();
+            this.chatForm.addEventListener('submit', (event) => {
+                event.preventDefault();
                 this.sendMessage();
             });
         }
 
-        // Input validation and auto-resize
         if (this.questionInput) {
             this.questionInput.addEventListener('input', () => {
-                const value = this.questionInput.value.trim();
-                this.sendBtn.disabled = value.length === 0 || this.isLoading;
-                if (this.charCount) {
-                    this.charCount.textContent = this.questionInput.value.length;
-                }
+                this.updateSendState();
                 this.autoResizeTextarea();
             });
 
-            // Enter key to send (Shift+Enter for new line)
-            this.questionInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
+            this.questionInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
                     if (!this.sendBtn.disabled && !this.isLoading) {
                         this.sendMessage();
                     }
@@ -62,144 +137,372 @@ class ChatBot {
             });
         }
 
-        // Clear chat (new chat)
         if (this.clearBtn) {
-            this.clearBtn.addEventListener('click', () => {
-                this.clearChat();
-            });
+            this.clearBtn.addEventListener('click', () => this.startNewChat());
         }
 
-        // Stats modal
-        if (this.statsBtn) {
-            this.statsBtn.addEventListener('click', () => {
-                this.showStats();
+        if (this.settingsBtn && this.settingsDropdown) {
+            this.settingsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.settingsDropdown.classList.toggle('active');
             });
-        }
 
-        // Close modal
-        if (this.statsModal) {
-            const modalClose = this.statsModal.querySelector('.modal-close');
-            if (modalClose) {
-                modalClose.addEventListener('click', () => {
-                    this.statsModal.classList.remove('active');
-                });
-            }
-            this.statsModal.addEventListener('click', (e) => {
-                if (e.target === this.statsModal) {
-                    this.statsModal.classList.remove('active');
+            document.addEventListener('click', (e) => {
+                if (!this.settingsDropdown.contains(e.target) && !this.settingsBtn.contains(e.target)) {
+                    this.settingsDropdown.classList.remove('active');
                 }
             });
         }
 
-        // Suggestion chips & example buttons
-        document.addEventListener('click', (e) => {
-            const chip = e.target.closest('.chip') || e.target.closest('.example-btn');
-            if (chip) {
-                const question = chip.dataset.question;
-                if (question && this.questionInput) {
-                    this.questionInput.value = question;
-                    this.sendBtn.disabled = false;
-                    if (this.charCount) this.charCount.textContent = question.length;
-                    this.autoResizeTextarea();
-                    this.sendMessage();
-                }
-            }
-        });
+        if (this.attachBtn) {
+            this.attachBtn.addEventListener('click', () => {
+                alert('Document upload is not currently supported in this demo environment.');
+            });
+        }
 
-        // Escape key to close modal
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                if (this.statsModal && this.statsModal.classList.contains('active')) {
-                    this.statsModal.classList.remove('active');
-                }
-                this.closeDashboard();
-            }
-        });
+        if (this.shareBtn) {
+            this.shareBtn.addEventListener('click', () => {
+                navigator.clipboard.writeText(window.location.href);
+                alert('URL copied to clipboard!');
+            });
+        }
 
-        // Dashboard panel
-        if (this.dashboardBtn) {
-            this.dashboardBtn.addEventListener('click', () => this.showDashboard());
+        if (this.userProfileBtn) {
+            this.userProfileBtn.addEventListener('click', () => {
+                alert('User profile settings coming soon.');
+            });
         }
-        if (this.dashboardClose) {
-            this.dashboardClose.addEventListener('click', () => this.closeDashboard());
+
+        if (this.chatsNavBtn) {
+            this.chatsNavBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const historyEl = document.getElementById('sidebarHistory');
+                if(historyEl) historyEl.scrollIntoView({ behavior: 'smooth' });
+            });
         }
-        if (this.dashboardOverlay) {
-            this.dashboardOverlay.addEventListener('click', () => this.closeDashboard());
+
+        if (this.chatTitleBtn) {
+            this.chatTitleBtn.addEventListener('click', () => {
+                alert('Chat configuration coming soon.');
+            });
         }
+
+        this.indexDataBtn = document.getElementById('indexDataBtn');
+        this.indexLoader = document.getElementById('indexLoader');
+
+        if (this.indexDataBtn) {
+            this.indexDataBtn.addEventListener('click', async () => {
+                this.indexDataBtn.style.display = 'none';
+                if (this.indexLoader) this.indexLoader.style.display = 'flex';
+                
+                try {
+                    const response = await fetch('/api/index-data', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    const data = await response.json();
+                    if (response.ok && data.success) {
+                        alert(`Successfully indexed ${data.indexed_count} documents!`);
+                        this.loadSystemStats();
+                    } else {
+                        alert(`Failed to index data: ${data.detail || data.error}`);
+                    }
+                } catch (err) {
+                    alert('Error connecting to the server while indexing.');
+                } finally {
+                    this.indexDataBtn.style.display = 'flex';
+                    if (this.indexLoader) this.indexLoader.style.display = 'none';
+                }
+            });
+        }
+    }
+
+    updateSendState() {
+        if (!this.sendBtn || !this.questionInput) return;
+        this.sendBtn.disabled = this.questionInput.value.trim().length === 0 || this.isLoading;
     }
 
     autoResizeTextarea() {
-        if (this.questionInput) {
-            this.questionInput.style.height = 'auto';
-            this.questionInput.style.height = Math.min(this.questionInput.scrollHeight, 120) + 'px';
-        }
+        if (!this.questionInput) return;
+        this.questionInput.style.height = 'auto';
+        this.questionInput.style.height = `${Math.min(this.questionInput.scrollHeight, 200)}px`;
     }
 
     switchToChatView() {
-        if (!this.hasMessages) {
-            this.hasMessages = true;
-            if (this.welcomeView) this.welcomeView.style.display = 'none';
-            if (this.chatView) this.chatView.style.display = 'flex';
-            if (this.suggestionChips) this.suggestionChips.style.display = 'none';
-        }
+        if (this.hasMessages) return;
+        this.hasMessages = true;
+        
+        if (this.greeting) this.greeting.style.display = 'none';
+        if (this.composerWrapper) this.composerWrapper.classList.remove('centered');
+        if (this.chatMessages) this.chatMessages.style.display = 'flex';
     }
 
     switchToWelcomeView() {
         this.hasMessages = false;
-        if (this.welcomeView) this.welcomeView.style.display = 'flex';
-        if (this.chatView) this.chatView.style.display = 'none';
-        if (this.suggestionChips) this.suggestionChips.style.display = 'flex';
+        
+        if (this.greeting) this.greeting.style.display = 'block';
+        if (this.composerWrapper) this.composerWrapper.classList.add('centered');
+        if (this.chatMessages) {
+            this.chatMessages.style.display = 'none';
+            this.chatMessages.innerHTML = '';
+        }
+    }
+
+    async loadSystemStats() {
+        try {
+            const response = await fetch('/api/stats');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.stats) {
+                    if (this.modelName) this.modelName.textContent = data.stats.llm_model || 'LLM';
+                    if (this.docCount) this.docCount.textContent = `${data.stats.total_documents} docs indexed`;
+                    const latencyStat = document.getElementById('latencyStat');
+                    if (latencyStat) latencyStat.textContent = `${data.stats.last_response_time_ms || '--'} ms`;
+                }
+            } else if (response.status === 401) {
+                const healthRes = await fetch('/health');
+                if (healthRes.ok) {
+                    const healthData = await healthRes.json();
+                    if (this.docCount) this.docCount.textContent = `${healthData.documents_indexed || 0} docs indexed`;
+                    if (this.modelName) this.modelName.textContent = 'Gemini Pro'; 
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching stats:', error);
+        }
     }
 
     async loadChatHistory() {
         try {
-            const response = await fetch('/api/history', {
-                headers: { 'Authorization': 'Bearer super-secret-student-key' }
-            });
+            const response = await fetch('/api/history');
             const data = await response.json();
 
-            if (data.success && data.history && data.history.length > 0) {
-                this.switchToChatView();
-                data.history.forEach(item => {
-                    this.addMessage(item.question, 'user', null, false);
-                    this.addMessage(item.answer, 'bot', null, false);
-                });
+            if (data.success) {
+                this.currentSessionId = data.session_id;
+                this.renderConversation(data.history || []);
+                if (data.history && data.history.length > 0) {
+                    this.upsertSession(this.currentSessionId, this.getSessionTitle(data.history));
+                } else {
+                    this.renderSessionSidebar();
+                }
+                this.loadSessionLogs();
             }
         } catch (error) {
             console.error('Error loading chat history:', error);
         }
     }
 
+    readStoredSessions() {
+        try {
+            const stored = JSON.parse(localStorage.getItem(this.sessionStorageKey) || '[]');
+            return Array.isArray(stored) ? stored.filter((session) => session && session.id) : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    saveStoredSessions() {
+        localStorage.setItem(this.sessionStorageKey, JSON.stringify(this.sessions.slice(0, 50)));
+    }
+
+    getSessionTitle(history) {
+        const firstQuestion = history.find((item) => item.question)?.question || 'New chat';
+        return firstQuestion.length > 48 ? `${firstQuestion.slice(0, 45)}...` : firstQuestion;
+    }
+
+    upsertSession(sessionId, title) {
+        if (!sessionId) return;
+        const existing = this.sessions.find((session) => session.id === sessionId);
+        if (existing) {
+            existing.title = existing.title === 'New chat' ? title : existing.title;
+            existing.updatedAt = new Date().toISOString();
+        } else {
+            this.sessions.unshift({
+                id: sessionId,
+                title,
+                updatedAt: new Date().toISOString(),
+            });
+        }
+        this.sessions.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        this.saveStoredSessions();
+        this.renderSessionSidebar();
+    }
+
+    renderSessionSidebar() {
+        if (!this.sessionHistoryList) return;
+
+        this.sessionHistoryList.innerHTML = '';
+        if (this.sessions.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-history';
+            empty.textContent = 'No saved chats yet';
+            this.sessionHistoryList.appendChild(empty);
+            return;
+        }
+
+        this.sessions.forEach((session) => {
+            const a = document.createElement('a');
+            a.href = '#';
+            a.className = `history-item${session.id === this.currentSessionId ? ' active' : ''}`;
+            a.textContent = session.title || 'Untitled chat';
+            a.title = session.title || 'Untitled chat';
+
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.loadSession(session.id);
+            });
+
+            this.sessionHistoryList.appendChild(a);
+        });
+    }
+
+    renderConversation(history) {
+        this.currentConversation = history || [];
+        if (!this.currentConversation.length) {
+            this.switchToWelcomeView();
+            return;
+        }
+
+        if (this.chatMessages) {
+            this.chatMessages.innerHTML = '';
+        }
+        this.switchToChatView();
+        this.currentConversation.forEach((item) => {
+            this.addMessage(item.question, 'user', null, false);
+            this.addMessage(item.answer, 'bot', item.sources || null, false);
+        });
+    }
+
+    async loadSession(sessionId) {
+        if (!sessionId || sessionId === this.currentSessionId) return;
+
+        try {
+            await fetch('/api/switch-chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId })
+            });
+
+            const response = await fetch(`/api/history?session_id=${encodeURIComponent(sessionId)}`);
+            const data = await response.json();
+            if (data.success) {
+                this.currentSessionId = data.session_id;
+                this.renderConversation(data.history || []);
+                if (data.history && data.history.length > 0) {
+                    this.upsertSession(this.currentSessionId, this.getSessionTitle(data.history));
+                } else {
+                    this.renderSessionSidebar();
+                }
+                this.loadSessionLogs();
+            }
+        } catch (error) {
+            console.error('Error loading saved chat:', error);
+        }
+    }
+
+    async loadSessionLogs() {
+        if (!this.chatLogList) return;
+
+        try {
+            const response = await fetch('/api/session-chat-logs?limit=25');
+            const data = await response.json();
+            if (data.success) {
+                this.renderSessionLogs(data.logs || []);
+            }
+        } catch (error) {
+            console.error('Error loading chat logs:', error);
+        }
+    }
+
+    renderSessionLogs(logs) {
+        if (!this.chatLogList) return;
+
+        this.chatLogList.innerHTML = '';
+        if (!logs.length) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-log';
+            empty.textContent = 'No logs yet';
+            this.chatLogList.appendChild(empty);
+            return;
+        }
+
+        logs.forEach((log) => {
+            const item = document.createElement('div');
+            item.className = 'log-item';
+
+            const question = document.createElement('div');
+            question.className = 'log-question';
+            question.textContent = log.question || 'Untitled question';
+
+            const meta = document.createElement('div');
+            meta.className = 'log-meta';
+            const created = log.created_at ? new Date(log.created_at).toLocaleString() : 'Unknown time';
+            const latency = log.response_time_ms ? `${Math.round(log.response_time_ms)} ms` : '-- ms';
+            meta.textContent = `${created} · ${latency}`;
+
+            item.appendChild(question);
+            item.appendChild(meta);
+            this.chatLogList.appendChild(item);
+        });
+    }
+
+    async startNewChat() {
+        try {
+            if (this.currentSessionId && this.currentConversation.length > 0) {
+                this.upsertSession(this.currentSessionId, this.getSessionTitle(this.currentConversation));
+            }
+
+            const response = await fetch('/api/new-chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.success) {
+                this.currentSessionId = data.session_id;
+                this.currentConversation = [];
+                this.switchToWelcomeView();
+                this.renderSessionSidebar();
+                this.renderSessionLogs([]);
+                if (this.questionInput) {
+                    this.questionInput.value = '';
+                    this.autoResizeTextarea();
+                    this.updateSendState();
+                    this.questionInput.focus();
+                }
+            }
+        } catch (error) {
+            console.error('Error starting new chat:', error);
+        }
+    }
+
+    addHistoryToSidebar(question) {
+        if (!this.currentSessionId) return;
+        const title = this.currentConversation.length > 0
+            ? this.getSessionTitle(this.currentConversation)
+            : question;
+        this.upsertSession(this.currentSessionId, title);
+    }
+
     async sendMessage() {
         const question = this.questionInput.value.trim();
         if (!question || this.isLoading) return;
 
-        const topK = this.topKSelect ? parseInt(this.topKSelect.value) : 3;
-
+        const topK = this.topKSelect ? parseInt(this.topKSelect.value, 10) : 3;
+        
         this.isLoading = true;
-        this.sendBtn.disabled = true;
-
-        // Switch to chat view
+        this.updateSendState();
         this.switchToChatView();
-
-        // Add user message
+        
         this.addMessage(question, 'user');
-
-        // Clear input
+        
         this.questionInput.value = '';
-        if (this.charCount) this.charCount.textContent = '0';
         this.autoResizeTextarea();
-
-        // Show typing
         this.showTyping();
 
         try {
             const response = await fetch('/api/query', {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer super-secret-student-key'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ question, top_k: topK })
             });
 
@@ -208,9 +511,24 @@ class ChatBot {
 
             if (data.success) {
                 this.addMessage(data.answer, 'bot', data.sources);
+                this.currentSessionId = data.session_id || this.currentSessionId;
+                this.currentConversation.push({
+                    question,
+                    answer: data.answer,
+                    sources: data.sources || [],
+                    timestamp: data.timestamp,
+                    response_time_ms: data.response_time_ms,
+                });
+                this.addHistoryToSidebar(question);
+                this.loadSessionLogs();
+                const latencyStat = document.getElementById('latencyStat');
+                if (latencyStat && data.response_time_ms) {
+                    latencyStat.textContent = `${data.response_time_ms} ms`;
+                }
+                this.loadSystemStats(); // Update other stats
             } else {
-                const errMsg = data.error || data.detail || 'Unknown error';
-                this.addMessage(`Sorry, I encountered an error: ${errMsg}`, 'bot');
+                const errorMessage = data.error || data.detail || 'Unknown error';
+                this.addMessage(`Sorry, I encountered an error: ${errorMessage}`, 'bot');
             }
         } catch (error) {
             this.hideTyping();
@@ -218,76 +536,29 @@ class ChatBot {
             console.error('Error:', error);
         } finally {
             this.isLoading = false;
-            this.sendBtn.disabled = this.questionInput.value.trim().length === 0;
+            this.updateSendState();
+            this.questionInput.focus();
         }
     }
 
     addMessage(text, type, sources = null, animate = true) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}-message`;
-        if (animate) messageDiv.style.animation = 'fadeIn 0.3s ease';
+        if (animate) messageDiv.style.animation = 'fadeIn 0.2s ease';
 
-        // Avatar
-        const avatarDiv = document.createElement('div');
-        avatarDiv.className = `message-avatar ${type}-avatar`;
-
-        if (type === 'bot') {
-            avatarDiv.innerHTML = '<span class="sparkle-icon small">✦</span>';
-        } else {
-            avatarDiv.textContent = 'A';
-        }
-
-        // Content
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
 
-        const textDiv = document.createElement('div');
-        textDiv.className = 'message-text';
-
-        const textParagraph = document.createElement('p');
-        textParagraph.textContent = text;
-        textDiv.appendChild(textParagraph);
-
-        // Sources
-        if (sources && sources.length > 0) {
-            const sourcesDiv = document.createElement('div');
-            sourcesDiv.className = 'sources';
-
-            const sourcesHeader = document.createElement('div');
-            sourcesHeader.className = 'sources-header';
-            sourcesHeader.innerHTML = `
-                <span class="sources-title">Sources (${sources.length})</span>
-                <button class="sources-toggle" onclick="this.parentElement.parentElement.classList.toggle('collapsed')">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="6 9 12 15 18 9"></polyline>
-                    </svg>
-                </button>
-            `;
-            sourcesDiv.appendChild(sourcesHeader);
-
-            const sourcesList = document.createElement('div');
-            sourcesList.className = 'sources-list';
-
-            sources.forEach((source, index) => {
-                const sourceItem = document.createElement('div');
-                sourceItem.className = 'source-item';
-                const similarityClass = source.similarity >= 80 ? 'high' : source.similarity >= 60 ? 'medium' : 'low';
-                sourceItem.innerHTML = `
-                    <div class="source-header">
-                        <span class="source-id">Source ${index + 1}</span>
-                        <span class="source-similarity ${similarityClass}">${source.similarity}% match</span>
-                    </div>
-                    <div class="source-text">${this.escapeHtml(source.text)}</div>
-                `;
-                sourcesList.appendChild(sourceItem);
-            });
-
-            sourcesDiv.appendChild(sourcesList);
-            textDiv.appendChild(sourcesDiv);
+        if (type === 'bot') {
+            contentDiv.innerHTML = typeof marked !== 'undefined' ? marked.parse(text) : `<p>${text}</p>`;
+            
+            if (sources && sources.length > 0) {
+                contentDiv.appendChild(this.createSourcesDrawer(sources));
+            }
+        } else {
+            contentDiv.textContent = text;
         }
 
-        contentDiv.appendChild(textDiv);
-        messageDiv.appendChild(avatarDiv);
         messageDiv.appendChild(contentDiv);
 
         if (this.chatMessages) {
@@ -297,217 +568,65 @@ class ChatBot {
         this.scrollToBottom();
     }
 
+    createSourcesDrawer(sources) {
+        const panel = document.createElement('div');
+        // Added 'expanded' class by default
+        panel.className = 'sources-panel expanded';
+
+        const toggle = document.createElement('button');
+        toggle.className = 'sources-toggle';
+        toggle.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            Sources (${sources.length})
+        `;
+        
+        const content = document.createElement('div');
+        content.className = 'sources-content';
+
+        sources.forEach((source, idx) => {
+            const item = document.createElement('div');
+            item.className = 'source-item';
+            
+            const similarityScore = source.similarity ? ` · ${source.similarity}% match` : '';
+            item.innerHTML = `
+                <h4>${source.id || `Source ${idx + 1}`}${similarityScore}</h4>
+                <p>${source.text}</p>
+            `;
+            content.appendChild(item);
+        });
+
+        toggle.addEventListener('click', () => {
+            panel.classList.toggle('expanded');
+        });
+
+        panel.appendChild(toggle);
+        panel.appendChild(content);
+
+        return panel;
+    }
+
     showTyping() {
-        if (this.typingIndicator) {
-            this.typingIndicator.style.display = 'flex';
-            this.scrollToBottom();
-        }
+        if (!this.typingIndicator) return;
+        this.typingIndicator.style.display = 'flex';
+        this.chatMessages.appendChild(this.typingIndicator);
+        this.scrollToBottom();
     }
 
     hideTyping() {
-        if (this.typingIndicator) {
-            this.typingIndicator.style.display = 'none';
-        }
+        if (!this.typingIndicator) return;
+        this.typingIndicator.style.display = 'none';
     }
 
     scrollToBottom() {
         setTimeout(() => {
-            if (this.chatView) {
-                this.chatView.scrollTop = this.chatView.scrollHeight;
+            if (this.chatArea) {
+                this.chatArea.scrollTop = this.chatArea.scrollHeight;
             }
         }, 50);
     }
 
-    async clearChat() {
-        try {
-            const response = await fetch('/api/clear', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer super-secret-student-key'
-                }
-            });
-
-            const data = await response.json();
-            if (data.success) {
-                if (this.chatMessages) this.chatMessages.innerHTML = '';
-                this.switchToWelcomeView();
-            }
-        } catch (error) {
-            console.error('Error clearing chat:', error);
-        }
-    }
-
-    async showStats() {
-        if (!this.statsModal) return;
-
-        this.statsModal.classList.add('active');
-        const statsContent = document.getElementById('statsContent');
-        if (statsContent) {
-            statsContent.innerHTML = '<div class="loading">Loading statistics...</div>';
-        }
-
-        try {
-            const response = await fetch('/api/stats', {
-                headers: { 'Authorization': 'Bearer super-secret-student-key' }
-            });
-            const data = await response.json();
-
-            if (data.success && statsContent) {
-                const stats = data.stats;
-                statsContent.innerHTML = `
-                    <div class="stat-item">
-                        <span class="stat-label">Documents Indexed</span>
-                        <span class="stat-value">${stats.total_documents ? stats.total_documents.toLocaleString() : 'N/A'}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Embedding Model</span>
-                        <span class="stat-value">${stats.embedding_model || 'N/A'}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">LLM Model</span>
-                        <span class="stat-value">${stats.llm_model || 'N/A'}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Collection</span>
-                        <span class="stat-value">${stats.collection_name || 'N/A'}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Total Sessions</span>
-                        <span class="stat-value">${stats.total_sessions || 0}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Total Queries</span>
-                        <span class="stat-value">${stats.total_queries || 0}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Avg Response Time</span>
-                        <span class="stat-value">${stats.avg_response_time_ms ? stats.avg_response_time_ms + 'ms' : 'N/A'}</span>
-                    </div>
-                `;
-            } else if (statsContent) {
-                statsContent.innerHTML = `<div class="loading">Failed to load: ${data.error || 'Unknown error'}</div>`;
-            }
-        } catch (error) {
-            console.error('Error loading stats:', error);
-            const statsContent = document.getElementById('statsContent');
-            if (statsContent) {
-                statsContent.innerHTML = '<div class="loading">Error loading statistics.</div>';
-            }
-        }
-    }
-
-    closeDashboard() {
-        if (this.dashboardPanel) this.dashboardPanel.classList.remove('active');
-        if (this.dashboardOverlay) this.dashboardOverlay.classList.remove('active');
-    }
-
-    async showDashboard() {
-        if (!this.dashboardPanel) return;
-
-        this.dashboardPanel.classList.add('active');
-        if (this.dashboardOverlay) this.dashboardOverlay.classList.add('active');
-
-        if (this.dashboardContent) {
-            this.dashboardContent.innerHTML = '<div class="loading">Loading vitals...</div>';
-        }
-
-        try {
-            const response = await fetch('/api/stats', {
-                headers: { 'Authorization': 'Bearer super-secret-student-key' }
-            });
-            const data = await response.json();
-
-            if (data.success && this.dashboardContent) {
-                const s = data.stats;
-                this.dashboardContent.innerHTML = `
-                    <div class="vitals-section-title">Status</div>
-                    <div class="vitals-grid">
-                        <div class="vital-card full-width">
-                            <div class="vital-label">Server</div>
-                            <div class="status-row">
-                                <span class="status-dot"></span>
-                                <span class="vital-value green small">Online — ${s.uptime_minutes || 0} min uptime</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="vitals-section-title">Data</div>
-                    <div class="vitals-grid">
-                        <div class="vital-card">
-                            <div class="vital-icon">📄</div>
-                            <div class="vital-label">Documents</div>
-                            <div class="vital-value accent">${s.total_documents ? s.total_documents.toLocaleString() : 'N/A'}</div>
-                        </div>
-                        <div class="vital-card">
-                            <div class="vital-icon">📦</div>
-                            <div class="vital-label">Collection</div>
-                            <div class="vital-value small">${s.collection_name || 'N/A'}</div>
-                        </div>
-                        <div class="vital-card full-width">
-                            <div class="vital-icon">🗃️</div>
-                            <div class="vital-label">Dataset</div>
-                            <div class="vital-value small">${s.dataset_name || 'N/A'}</div>
-                        </div>
-                    </div>
-
-                    <div class="vitals-section-title">Models</div>
-                    <div class="vitals-grid">
-                        <div class="vital-card">
-                            <div class="vital-icon">🧠</div>
-                            <div class="vital-label">LLM Model</div>
-                            <div class="vital-value small pink">${s.llm_model || 'N/A'}</div>
-                        </div>
-                        <div class="vital-card">
-                            <div class="vital-icon">🔗</div>
-                            <div class="vital-label">Embeddings</div>
-                            <div class="vital-value small">${s.embedding_model || 'N/A'}</div>
-                        </div>
-                    </div>
-
-                    <div class="vitals-section-title">Performance</div>
-                    <div class="vitals-grid">
-                        <div class="vital-card">
-                            <div class="vital-icon">💬</div>
-                            <div class="vital-label">Total Queries</div>
-                            <div class="vital-value">${s.total_queries || 0}</div>
-                        </div>
-                        <div class="vital-card">
-                            <div class="vital-icon">👥</div>
-                            <div class="vital-label">Sessions</div>
-                            <div class="vital-value">${s.total_sessions || 0}</div>
-                        </div>
-                        <div class="vital-card">
-                            <div class="vital-icon">⚡</div>
-                            <div class="vital-label">Avg Latency</div>
-                            <div class="vital-value amber">${s.avg_response_time_ms ? s.avg_response_time_ms + 'ms' : '—'}</div>
-                        </div>
-                        <div class="vital-card">
-                            <div class="vital-icon">🏁</div>
-                            <div class="vital-label">Last Latency</div>
-                            <div class="vital-value amber">${s.last_response_time_ms ? s.last_response_time_ms + 'ms' : '—'}</div>
-                        </div>
-                    </div>
-                `;
-            } else if (this.dashboardContent) {
-                this.dashboardContent.innerHTML = `<div class="loading">Error: ${data.error || 'Failed to load'}</div>`;
-            }
-        } catch (error) {
-            console.error('Error loading dashboard:', error);
-            if (this.dashboardContent) {
-                this.dashboardContent.innerHTML = '<div class="loading">Error loading vitals. Is the server running?</div>';
-            }
-        }
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
 }
 
-// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     window.chatbot = new ChatBot();
 });
