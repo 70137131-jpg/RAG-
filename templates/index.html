@@ -4,79 +4,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#232221">
+    <meta name="description" content="Atlas RAG — a retrieval-augmented research assistant grounded in your indexed documents.">
     <title>Atlas RAG — Research Assistant</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"
+        integrity="sha384-QsSpx6a0USazT7nK7w8qXDgpSAPhFsb2XtpoLFQ5+X2yFN6hvCKnwEzN8M5FWaJb"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"
+        integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a"
+        crossorigin="anonymous"></script>
     <link rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}?v=2">
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"
+        integrity="sha384-oaMLBGEzBOJx3UHwac0cVndtX5fxGQIfnAeFZ35RTgqPcYlbprH9o9PUV/F8Le07"
+        crossorigin="anonymous">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
+        integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp"
+        crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}?v=3">
 </head>
 
 <body>
     <div class="app-layout">
-        <aside class="sidebar" id="leftSidebar">
+        <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+        <aside class="sidebar" id="leftSidebar" aria-label="Chat navigation">
             <div class="sidebar-header">
-                <span class="brand-name">RAG Workspace</span>
+                <span class="brand-name">Atlas RAG</span>
                 <div class="sidebar-icons">
-                    <button class="icon-btn" title="Search"><svg viewBox="0 0 24 24" width="18" height="18"
-                            stroke="currentColor" stroke-width="2" fill="none">
+                    <button class="icon-btn" id="searchToggleBtn" type="button" title="Search chats"
+                        aria-label="Search chats" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18"
+                            stroke="currentColor" stroke-width="2" fill="none" aria-hidden="true">
                             <circle cx="11" cy="11" r="8"></circle>
                             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                         </svg></button>
                 </div>
             </div>
 
-            <button class="new-chat-btn" id="clearBtn">
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+            <button class="new-chat-btn" id="clearBtn" type="button">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"
+                    aria-hidden="true">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
                 New chat
             </button>
 
-            <nav class="sidebar-nav">
-                <a href="#" class="nav-item active" id="chatsNavBtn"><svg viewBox="0 0 24 24" width="16" height="16"
-                        stroke="currentColor" stroke-width="2" fill="none">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                    </svg> Chats</a>
-            </nav>
+            <div class="session-search" id="sessionSearch" hidden>
+                <input type="search" id="sessionSearchInput" class="session-search-input" placeholder="Filter chats..."
+                    aria-label="Filter saved chats">
+            </div>
 
             <div class="chat-history" id="sidebarHistory">
                 <div class="history-group">
-                    <div class="group-title">Chats</div>
-                    <div id="sessionHistoryList">
+                    <div class="group-title" id="chatsGroupTitle">Chats</div>
+                    <div id="sessionHistoryList" role="list" aria-labelledby="chatsGroupTitle">
                         <!-- Dynamic history items -->
                     </div>
                 </div>
             </div>
 
             <div class="sidebar-footer">
-                <div class="user-profile" id="userProfileBtn" style="cursor: pointer;">
-                    <div class="avatar">R</div>
+                <div class="user-profile">
+                    <div class="avatar" aria-hidden="true">R</div>
                     <div class="user-info">
                         <strong>Researcher</strong>
-                        <span>RAG User</span>
+                        <span>Atlas RAG User</span>
                     </div>
                 </div>
             </div>
         </aside>
 
-        <div class="resizer" id="leftResizer"></div>
+        <div class="resizer" id="leftResizer" aria-hidden="true"></div>
 
         <main class="main-content">
             <header class="top-header">
-                <div class="chat-title" id="chatTitleBtn">
-                    <span id="headerTitle">Atlas RAG</span> <svg viewBox="0 0 24 24" width="16" height="16"
-                        stroke="currentColor" stroke-width="2" fill="none">
-                        <polyline points="6 9 12 15 18 9"></polyline>
-                    </svg>
+                <div class="header-left">
+                    <button class="icon-btn menu-btn" id="menuBtn" type="button" title="Open menu"
+                        aria-label="Open chat menu" aria-expanded="false">
+                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2"
+                            fill="none" aria-hidden="true">
+                            <line x1="3" y1="6" x2="21" y2="6"></line>
+                            <line x1="3" y1="12" x2="21" y2="12"></line>
+                            <line x1="3" y1="18" x2="21" y2="18"></line>
+                        </svg>
+                    </button>
+                    <div class="chat-title">
+                        <span id="headerTitle">Atlas RAG</span>
+                    </div>
                 </div>
-                <button class="share-btn" id="shareBtn"><svg viewBox="0 0 24 24" width="16" height="16"
-                        stroke="currentColor" stroke-width="2" fill="none">
+                <button class="share-btn" id="shareBtn" type="button"><svg viewBox="0 0 24 24" width="16" height="16"
+                        stroke="currentColor" stroke-width="2" fill="none" aria-hidden="true">
                         <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
                         <polyline points="16 6 12 2 8 6"></polyline>
                         <line x1="12" y1="2" x2="12" y2="15"></line>
@@ -84,8 +106,9 @@
             </header>
 
             <div class="chat-area" id="chatArea">
-                <div class="messages-container" id="chatMessages" style="display: none;"></div>
-                <div id="typingIndicator" class="typing-indicator" style="display: none;">
+                <div class="messages-container" id="chatMessages" role="log" aria-live="polite"
+                    aria-label="Conversation" style="display: none;"></div>
+                <div id="typingIndicator" class="typing-indicator" style="display: none;" aria-hidden="true">
                     <span></span><span></span><span></span>
                 </div>
 
@@ -94,40 +117,34 @@
                         <h2>How can I help you research today?</h2>
                     </div>
                     <form id="chatForm" class="composer">
-                        <button type="button" class="attach-btn" id="attachBtn" title="Upload Document">
-                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2"
-                                fill="none">
-                                <path
-                                    d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48">
-                                </path>
-                            </svg>
-                        </button>
                         <div class="input-wrapper">
                             <textarea id="questionInput" placeholder="Ask a question about the indexed documents..."
-                                rows="1"></textarea>
+                                rows="1" aria-label="Your question"></textarea>
                         </div>
                         <div class="composer-right">
-                            <div class="model-select" id="settingsBtn">
+                            <button class="model-select" id="settingsBtn" type="button" aria-haspopup="true"
+                                aria-expanded="false" aria-controls="settingsDropdown">
                                 <span id="modelName">LLM</span> <svg viewBox="0 0 24 24" width="14" height="14"
-                                    stroke="currentColor" stroke-width="2" fill="none">
+                                    stroke="currentColor" stroke-width="2" fill="none" aria-hidden="true">
                                     <polyline points="6 9 12 15 18 9"></polyline>
                                 </svg>
-                            </div>
+                            </button>
                             <div class="settings-dropdown" id="settingsDropdown">
                                 <div class="dropdown-header">Retrieval Settings</div>
                                 <div class="dropdown-item">
-                                    <label>Top K Sources</label>
+                                    <label for="topKSelect">Top K Sources</label>
                                     <select id="topKSelect">
                                         <option value="2">2 chunks</option>
                                         <option value="3" selected>3 chunks</option>
                                         <option value="5">5 chunks</option>
                                         <option value="7">7 chunks</option>
+                                        <option value="10">10 chunks</option>
                                     </select>
                                 </div>
                             </div>
-                            <button type="submit" id="sendBtn" class="send-btn" disabled>
+                            <button type="submit" id="sendBtn" class="send-btn" disabled aria-label="Send message">
                                 <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2"
-                                    fill="none">
+                                    fill="none" aria-hidden="true">
                                     <line x1="12" y1="19" x2="12" y2="5"></line>
                                     <polyline points="5 12 12 5 19 12"></polyline>
                                 </svg>
@@ -141,16 +158,16 @@
             </div>
         </main>
 
-        <div class="resizer" id="rightResizer"></div>
+        <div class="resizer" id="rightResizer" aria-hidden="true"></div>
 
-        <aside class="right-sidebar sidebar" id="rightSidebar">
-            <div class="sidebar-header" style="padding-bottom: 24px;">
+        <aside class="right-sidebar sidebar" id="rightSidebar" aria-label="System health">
+            <div class="sidebar-header sidebar-header--spaced">
                 <span class="brand-name">System Health</span>
             </div>
 
             <div class="sidebar-section">
                 <div class="section-title">Status</div>
-                <div class="nav-item" style="cursor:default;">
+                <div class="nav-item nav-item--static">
                     <div class="status-indicator" id="statusIndicator">
                         <span class="status-dot yellow"></span>
                         <span id="statusText">Checking...</span>
@@ -160,8 +177,9 @@
 
             <div class="sidebar-section">
                 <div class="section-title">Knowledge Base</div>
-                <div class="nav-item" style="cursor:default;">
-                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                <div class="nav-item nav-item--static">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"
+                        aria-hidden="true">
                         <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
                         <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
                     </svg>
@@ -171,7 +189,7 @@
 
             <div class="sidebar-section">
                 <div class="section-title">Data Management</div>
-                <div class="nav-item" style="display: flex; flex-direction: column;">
+                <div class="nav-item nav-item--column">
                     <label class="admin-token-label" for="adminTokenInput">Admin token</label>
                     <div class="admin-token-row">
                         <input id="adminTokenInput" class="admin-token-input" type="password"
@@ -181,29 +199,27 @@
                     <div id="adminTokenHint" class="admin-token-hint">
                         Public chat works without a token. Admin actions stay locked until a valid token is saved.
                     </div>
-                    <button id="indexDataBtn" class="share-btn"
-                        style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; padding: 6px 10px;">
+                    <button id="indexDataBtn" class="share-btn index-data-btn" type="button">
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2"
-                            fill="none">
+                            fill="none" aria-hidden="true">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                             <polyline points="17 8 12 3 7 8"></polyline>
                             <line x1="12" y1="3" x2="12" y2="15"></line>
                         </svg>
                         Index Dataset
                     </button>
-                    <div id="indexLoader"
-                        style="display: none; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--text-muted);">
-                        <span
-                            style="width: 14px; height: 14px; border: 2px solid var(--text-muted); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;"></span>
+                    <div id="indexLoader" class="index-loader">
+                        <span class="index-loader-spinner" aria-hidden="true"></span>
                         Indexing...
                     </div>
                 </div>
             </div>
 
             <div class="sidebar-section">
-                <div class="section-title">Avg Latency</div>
-                <div class="nav-item" style="cursor:default;">
-                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                <div class="section-title">Last Response</div>
+                <div class="nav-item nav-item--static">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"
+                        aria-hidden="true">
                         <circle cx="12" cy="12" r="10"></circle>
                         <polyline points="12 6 12 12 16 14"></polyline>
                     </svg>
@@ -219,7 +235,8 @@
             </div>
         </aside>
     </div>
-    <script src="{{ url_for('static', path='js/chat.js') }}?v=2"></script>
+    <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="false"></div>
+    <script src="{{ url_for('static', path='js/chat.js') }}?v=3"></script>
 </body>
 
 </html>
